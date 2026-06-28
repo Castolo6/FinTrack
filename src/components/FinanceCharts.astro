@@ -1,0 +1,133 @@
+---
+import { db } from '../lib/db';
+import { formatCLP } from '../lib/utils';
+
+interface Props {
+  startDate: string; // Formato YYYY-MM-DD
+  endDate: string; // Formato YYYY-MM-DD
+}
+
+const { startDate, endDate } = Astro.props;
+
+// 1. Obtener gastos agrupados por categoría
+const categoryExpenses = db.prepare(`
+  SELECT c.name, c.color, c.icon, SUM(t.amount) as total
+  FROM transactions t
+  JOIN categories c ON t.category_id = c.id
+  WHERE t.type = 'expense' AND t.date >= ? AND t.date <= ?
+  GROUP BY c.id
+  ORDER BY total DESC
+`).all(startDate, endDate) as Array<{
+  name: string;
+  color: string;
+  icon: string;
+  total: number;
+}>;
+
+// Sumar total de gastos
+const totalExpenses = categoryExpenses.reduce((sum, item) => sum + item.total, 0);
+
+// Mapear porcentajes y barras de progreso
+const categoryData = categoryExpenses.map(item => {
+  const percent = totalExpenses > 0 ? Math.round((item.total / totalExpenses) * 100) : 0;
+  const barsCount = Math.round(percent / 10);
+  const progressBar = '[' + '█'.repeat(barsCount) + '░'.repeat(10 - barsCount) + ']';
+
+  return {
+    ...item,
+    percent,
+    progressBar
+  };
+});
+
+// 2. Obtener resumen de Ingresos vs Gastos
+const summary = db.prepare(`
+  SELECT 
+    SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
+    SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
+  FROM transactions
+  WHERE date >= ? AND date <= ?
+`).get(startDate, endDate) as { income: number | null; expense: number | null };
+
+const totalIncome = summary?.income || 0;
+const totalExpense = summary?.expense || 0;
+
+// Calcular alturas para las barras del gráfico SVG (Máxima altura 150px)
+const maxAmount = Math.max(totalIncome, totalExpense) || 1;
+const incomeBarHeight = Math.round((totalIncome / maxAmount) * 150);
+const expenseBarHeight = Math.round((totalExpense / maxAmount) * 150);
+---
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  
+  <!-- Gráfico de Comparación Ingresos vs Gastos (SVG) -->
+  <div class="terminal-window m-0">
+    <div class="terminal-header">
+      <span>> chart --compare=cashflow</span>
+    </div>
+    <div class="terminal-body font-mono text-sm flex flex-col justify-between h-[250px]">
+      <h2 class="text-xs uppercase text-secondary mb-4">[ FLUJO_CAJA_MENSUAL ]</h2>
+      
+      {totalIncome === 0 && totalExpense === 0 ? (
+        <div class="flex-1 flex items-center justify-center text-muted-text text-xs border border-dashed border-border-subtle bg-bg">
+          [ NO DATA TO PLOT ]
+        </div>
+      ) : (
+        <div class="flex-1 flex items-end justify-around pb-2 border-b border-border-main">
+          <!-- Columna Ingresos -->
+          <div class="flex flex-col items-center w-24">
+            <span class="text-green-500 text-xs font-bold mb-2">{formatCLP(totalIncome)}</span>
+            <div 
+              class="w-12 bg-green-500 border border-green-700 transition-all duration-500" 
+              style={`height: ${incomeBarHeight}px;`}
+            ></div>
+            <span class="text-xs text-secondary mt-2">INGRESOS</span>
+          </div>
+
+          <!-- Columna Gastos -->
+          <div class="flex flex-col items-center w-24">
+            <span class="text-red-500 text-xs font-bold mb-2">{formatCLP(totalExpense)}</span>
+            <div 
+              class="w-12 bg-red-500 border border-red-700 transition-all duration-500" 
+              style={`height: ${expenseBarHeight}px;`}
+            ></div>
+            <span class="text-xs text-secondary mt-2">GASTOS</span>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+
+  <!-- Desglose de Gastos por Categoría (Terminal Style) -->
+  <div class="terminal-window m-0">
+    <div class="terminal-header">
+      <span>> chart --group=categories</span>
+    </div>
+    <div class="terminal-body font-mono text-sm flex flex-col justify-between h-[250px] overflow-y-auto">
+      <h2 class="text-xs uppercase text-secondary mb-4">[ DISTRIBUCION_DE_GASTOS ]</h2>
+      
+      {categoryData.length === 0 ? (
+        <div class="flex-1 flex items-center justify-center text-muted-text text-xs border border-dashed border-border-subtle bg-bg">
+          [ NO DATA TO PLOT ]
+        </div>
+      ) : (
+        <div class="space-y-3">
+          {categoryData.map(item => (
+            <div class="space-y-1 text-xs">
+              <div class="flex justify-between">
+                <span>{item.icon} {item.name}</span>
+                <span class="text-secondary">
+                  {formatCLP(item.total)} <span class="text-main font-bold">({item.percent}%)</span>
+                </span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-accent font-bold">{item.progressBar}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+
+</div>

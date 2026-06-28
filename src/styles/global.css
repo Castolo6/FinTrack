@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── PALETA DE COLORES CACHYOS ── */
+  --color-bg:              #080c14; /* Fondo principal (azul grisáceo profundo) */
+  --color-bg-subtle:       #0d1320; /* Fondo secundario/cabecera */
+  --color-text-main:       #1dc7b5; /* Cian característico de CachyOS */
+  --color-text-secondary:  #159b8d; /* Texto secundario en terminal */
+  --color-muted-text:      #0f685f; /* Comentarios y texto opaco */
+  --color-border-main:     #0a4a44; /* Bordes de terminal y divisiones */
+  --color-border-subtle:   #062e2a; /* Bordes internos y líneas guía */
+  --color-surface-main:    #0c121e; /* Fondo de bloques e inputs */
+
+  /* Acento */
+  --color-accent:          #1dc7b5; /* Color activo */
+  --color-accent-hover:    #2cf4df; /* Resplandor activo */
+  --color-on-accent:       #080c14; /* Texto inverso sobre fondo cian */
+  --color-accent-ring:     rgba(29, 199, 181, 0.2); /* Glow y sombras de borde */
+
+  /* Tags */
+  --color-tag-bg:          rgba(29, 199, 181, 0.08); /* Fondo transparente para etiquetas */
+  --color-tag-text:        #1dc7b5;
+
+  /* ── TIPOGRAFÍA MONOSPACE ── */
+  --font-sans:    "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  --font-display: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  --font-mono:    "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+}
+
+:root {
+  color-scheme: dark;
+  /* ── VARIABLES NATIVAS CSS ── */
+  --color-bg:              #080c14;
+  --color-bg-subtle:       #0d1320;
+  --color-text:            #1dc7b5;
+  --color-text-secondary:  #159b8d;
+  --color-muted:           #0f685f;
+  --color-border:          #0a4a44;
+  --color-border-subtle:   #062e2a;
+  --color-surface:         #0c121e;
+  --color-accent:          #1dc7b5;
+  --color-accent-hover:    #2cf4df;
+  --color-on-accent:       #080c14;
+  --color-accent-ring:     rgba(29, 199, 181, 0.2);
+  --color-tag-bg:          rgba(29, 199, 181, 0.08);
+  --color-tag-text:        #1dc7b5;
+
+  /* ── TIPOGRAFÍA MONOSPACE ── */
+  --font-sans:    "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  --font-display: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  --font-mono:    "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+
+  /* ── RADIOS Y BORDES (FLAT) ── */
+  --radius:    0px; /* Sin bordes redondeados */
+  --radius-lg: 0px;
+
+  /* Espaciado */
+  --nav-height: 48px;
+  --content-width: 720px;
+  --wide-width: 1200px;
+}
+
+/* ── ESTILOS BASE HACKER TERMINAL ── */
+html, body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/* Scrollbar estilo terminal */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-subtle);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 0px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text);
+}
+
+/* Resaltado de texto */
+::selection {
+  background-color: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* Estilo contenedor general de terminal */
+.terminal-window {
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg);
+  font-family: var(--font-mono);
+  box-shadow: 0 0 10px var(--color-accent-ring);
+  margin: 1rem 0;
+}
+
+.terminal-header {
+  background-color: var(--color-bg-subtle);
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.5rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.terminal-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.terminal-button {
+  width: 10px;
+  height: 10px;
+  border-radius: 0%;
+  border: 1px solid var(--color-border-subtle);
+  background-color: transparent;
+}
+
+.terminal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+/* ── PERSONALIZACIÓN DE SELECTS E INPUTS DE FECHA/MES ── */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="%231dc7b5" viewBox="0 0 16 16"><path d="M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z"/></svg>');
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 10px;
+  padding-right: 2rem !important;
+  cursor: pointer;
+}
+
+/* Indicador de calendario para inputs tipo date y month */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator {
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="%231dc7b5" viewBox="0 0 16 16"><path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4H1z"/></svg>');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  opacity: 0.8;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="month"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+/* Ocultar barra de desplazamiento */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;  /* IE y Edge */
+  scrollbar-width: none !important;  /* Firefox */
+}

@@ -1,0 +1,297 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { db } from '../lib/db';
+import { formatCLP } from '../lib/utils';
+
+const user = Astro.locals.user;
+const now = new Date();
+const currentYear = now.getFullYear();
+const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+const startOfMonth = `${currentYear}-${currentMonth}-01`;
+const endOfMonth = `${currentYear}-${currentMonth}-31`;
+
+// Obtener tipo de transacción (gasto por defecto o ingreso)
+const url = Astro.url;
+const selectedType = url.searchParams.get('type') === 'income' ? 'income' : 'expense';
+const typeLabel = selectedType === 'income' ? 'INGRESO' : 'GASTO';
+const typeLabelPlural = selectedType === 'income' ? 'INGRESOS' : 'GASTOS';
+
+// ─── 1. OBTENER TRANSACCIONES DIARIAS (Mes actual) ───
+// Buscar transacciones del mes agrupados por fecha
+const dailyTransactionsRaw = db.prepare(`
+  SELECT date, SUM(amount) as total
+  FROM transactions
+  WHERE type = ? AND date >= ? AND date <= ?
+  GROUP BY date
+  ORDER BY date ASC
+`).all(selectedType, startOfMonth, endOfMonth) as Array<{ date: string; total: number }>;
+
+// Obtener cantidad de días del mes actual
+const daysInMonth = new Date(currentYear, now.getMonth() + 1, 0).getDate();
+const dailyData: Array<{ day: number; total: number; label: string }> = [];
+
+for (let d = 1; d <= daysInMonth; d++) {
+  const dayStr = String(d).padStart(2, '0');
+  const dateStr = `${currentYear}-${currentMonth}-${dayStr}`;
+  const found = dailyTransactionsRaw.find(item => item.date === dateStr);
+  dailyData.push({
+    day: d,
+    total: found ? found.total : 0,
+    label: `${d}/${currentMonth}`
+  });
+}
+
+// Calcular valores para gráfico diario (SVG viewBox="0 0 600 150")
+const maxDaily = Math.max(...dailyData.map(d => d.total)) || 1;
+const dailyPath = dailyData.map((d, i) => {
+  const x = (i / (daysInMonth - 1)) * 560 + 20;
+  const y = 130 - (d.total / maxDaily) * 110;
+  return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+}).join(' ');
+
+const dailyAreaPath = dailyPath ? `${dailyPath} L 580 130 L 20 130 Z` : '';
+
+
+// ─── 2. OBTENER TOTAL SEMANAL (Mes actual) ───
+// Agrupar los días por semanas (W1: 1-7, W2: 8-14, W3: 15-21, W4: 22-31)
+const weeklyData = [
+  { label: 'Semana 1 (1-7)', total: 0 },
+  { label: 'Semana 2 (8-14)', total: 0 },
+  { label: 'Semana 3 (15-21)', total: 0 },
+  { label: 'Semana 4 (22-31)', total: 0 }
+];
+
+for (const d of dailyData) {
+  if (d.day <= 7) weeklyData[0].total += d.total;
+  else if (d.day <= 14) weeklyData[1].total += d.total;
+  else if (d.day <= 21) weeklyData[2].total += d.total;
+  else weeklyData[3].total += d.total;
+}
+
+const maxWeekly = Math.max(...weeklyData.map(w => w.total)) || 1;
+
+
+// ─── 3. OBTENER TOTAL MENSUAL (Año actual) ───
+const monthlyTransactionsRaw = db.prepare(`
+  SELECT strftime('%m', date) as month, SUM(amount) as total
+  FROM transactions
+  WHERE type = ? AND strftime('%Y', date) = ?
+  GROUP BY month
+  ORDER BY month ASC
+`).all(selectedType, String(currentYear)) as Array<{ month: string; total: number }>;
+
+const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const monthlyData = monthNames.map((name, i) => {
+  const monthNum = String(i + 1).padStart(2, '0');
+  const found = monthlyTransactionsRaw.find(m => m.month === monthNum);
+  return {
+    label: name,
+    total: found ? found.total : 0
+  };
+});
+
+const maxMonthly = Math.max(...monthlyData.map(m => m.total)) || 1;
+---
+
+<Layout title={`FinTrack - Evolución de ${selectedType === 'income' ? 'Ingresos' : 'Gastos'}`}>
+  <div class="flex flex-col md:flex-row min-h-screen">
+    
+    <!-- Sidebar / Panel de Control -->
+    <aside class="w-full md:w-64 bg-bg-subtle border-b md:border-b-0 md:border-r border-border-main p-4 flex flex-col md:justify-between gap-4 md:gap-0">
+      <div class="flex flex-col md:flex-col justify-between gap-2 md:gap-0">
+        <!-- Logo con info de usuario compacta en mobile -->
+        <div class="flex items-center justify-between p-2 border border-dashed border-border-subtle bg-bg md:mb-8 w-full">
+          <span class="text-lg md:text-xl font-bold text-main font-mono">[FT] FinTrack</span>
+          <div class="flex items-center gap-2 md:hidden font-mono text-[10px]">
+            <span class="text-secondary">{user?.username || 'admin'}</span>
+            <a href="/api/auth/logout" class="text-red-500 border border-red-900 bg-red-950/20 px-2 py-0.5 font-bold">[X]</a>
+          </div>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="flex flex-row md:flex-col overflow-x-auto md:overflow-x-visible gap-2 pb-2 md:pb-0 md:space-y-2 text-xs md:text-sm font-mono whitespace-nowrap no-scrollbar">
+          <a href="/" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[DASHBOARD]</a>
+          <a href="/transactions" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[TRANSACCIONES]</a>
+          <a href="/budgets" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[PRESUPUESTOS]</a>
+          <a href="/charts" class="px-3 py-2 bg-border-main text-bg font-bold">[GRAFICAS]</a>
+          <a href="/goals" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[OBJETIVOS]</a>
+          <a href="/analysis" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[ANALISIS]</a>
+          <a href="/settings" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[RESPALDOS]</a>
+        </nav>
+      </div>
+
+      <!-- User/Session info & Logout (solo visible en desktop) -->
+      <div class="hidden md:block mt-8 pt-4 border-t border-border-subtle font-mono text-xs text-secondary space-y-2">
+        <div>USUARIO: <span class="text-main font-bold">{user?.username || 'admin'}</span></div>
+        <a href="/api/auth/logout" class="block mt-4 text-center border border-red-900 bg-red-950/20 hover:bg-red-800 hover:text-bg text-red-500 font-bold py-1 transition-colors">
+          [ CERRAR_SESION ]
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-6 space-y-6 overflow-y-auto font-mono">
+      
+      <!-- Top Title Command & Tabs -->
+      <div class="border-b border-border-subtle pb-4 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+        <div>
+          <h1 class="text-xl text-main font-bold">> chart --analyze --evolution --type={selectedType}</h1>
+          <p class="text-xs text-secondary mt-1">Evolución de {selectedType === 'income' ? 'ingresos' : 'egresos'} y comportamiento de {selectedType === 'income' ? 'entradas' : 'gastos'}.</p>
+        </div>
+
+        <!-- Pestañas de Selección de Gastos / Ingresos -->
+        <div class="flex gap-2 text-xs font-bold font-mono">
+          <a 
+            href="?type=expense" 
+            class={`px-3 py-1.5 border transition-colors ${selectedType === 'expense' ? 'bg-border-main text-bg border-border-main' : 'border-border-main text-main hover:bg-surface-main'}`}
+          >
+            [ GASTOS / EGRESOS ]
+          </a>
+          <a 
+            href="?type=income" 
+            class={`px-3 py-1.5 border transition-colors ${selectedType === 'income' ? 'bg-border-main text-bg border-border-main' : 'border-border-main text-main hover:bg-surface-main'}`}
+          >
+            [ INGRESOS / ENTRADAS ]
+          </a>
+        </div>
+      </div>
+
+      <!-- Grid de Gráficos -->
+      <div class="space-y-6">
+        
+        <!-- 1. Gráfico Diario (Mes en Curso) -->
+        <div class="terminal-window m-0">
+          <div class="terminal-header">
+            <span>{`> chart --period=daily --view=line --type=${selectedType}`}</span>
+          </div>
+          <div class="terminal-body space-y-4">
+            <h2 class="text-xs uppercase text-secondary">{`[ ${typeLabel}_DIARIO_DEL_MES ]`}</h2>
+            
+            {maxDaily === 1 ? (
+              <div class="h-[180px] flex items-center justify-center text-muted-text text-xs border border-dashed border-border-subtle bg-bg">
+                [ NO DATA TO PLOT ]
+              </div>
+            ) : (
+              <div class="relative bg-bg border border-border-subtle p-4">
+                <svg viewBox="0 0 600 150" class="w-full h-[180px] overflow-visible">
+                  <!-- Líneas guía horizontales -->
+                  <line x1="20" y1="20" x2="580" y2="20" stroke="#0a4a44" stroke-dasharray="2" />
+                  <line x1="20" y1="75" x2="580" y2="75" stroke="#0a4a44" stroke-dasharray="2" />
+                  <line x1="20" y1="130" x2="580" y2="130" stroke="#0a4a44" />
+
+                  <!-- Relleno de área de gráfico -->
+                  {dailyAreaPath && (
+                    <path d={dailyAreaPath} fill="url(#area-gradient)" opacity="0.15" />
+                  )}
+                  
+                  <!-- Línea de trazado -->
+                  {dailyPath && (
+                    <path d={dailyPath} fill="none" stroke="#1dc7b5" stroke-width="2" />
+                  )}
+
+                  <!-- Puntos del gráfico -->
+                  {dailyData.map((d, i) => {
+                    if (d.total === 0) return null;
+                    const x = (i / (daysInMonth - 1)) * 560 + 20;
+                    const y = 130 - (d.total / maxDaily) * 110;
+                    return (
+                      <g class="group cursor-pointer">
+                        <circle cx={x} cy={y} r="4" fill="#080c14" stroke="#1dc7b5" stroke-width="2" />
+                        <title>{`Día ${d.day}: ${formatCLP(d.total)}`}</title>
+                      </g>
+                    );
+                  })}
+
+                  <!-- Grado de Área Definición -->
+                  <defs>
+                    <linearGradient id="area-gradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#1dc7b5" />
+                      <stop offset="100%" stop-color="#080c14" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+
+                <div class="flex justify-between text-[10px] text-secondary mt-2 px-4 border-t border-border-subtle pt-2">
+                  <span>Día 1</span>
+                  <span>Día {Math.round(daysInMonth / 2)}</span>
+                  <span>Día {daysInMonth}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <!-- 2. Gráfico Semanal y Mensual en 2 Columnas -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          <!-- Semanal (Mes en Curso) -->
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>{`> chart --period=weekly --view=bar --type=${selectedType}`}</span>
+            </div>
+            <div class="terminal-body space-y-4 h-[250px] flex flex-col justify-between">
+              <h2 class="text-xs uppercase text-secondary">{`[ ${typeLabel}_SEMANAL ]`}</h2>
+              
+              {maxWeekly === 1 ? (
+                <div class="flex-1 flex items-center justify-center text-muted-text text-xs border border-dashed border-border-subtle bg-bg">
+                  [ NO DATA TO PLOT ]
+                </div>
+              ) : (
+                <div class="flex-1 flex items-end justify-around pb-2 border-b border-border-subtle">
+                  {weeklyData.map(w => {
+                    const barHeight = Math.round((w.total / maxWeekly) * 120);
+                    return (
+                      <div class="flex flex-col items-center w-20">
+                        <span class="text-[10px] text-main font-bold mb-1">{formatCLP(w.total)}</span>
+                        <div class="w-8 bg-accent border border-border-main" style={`height: ${barHeight}px;`}></div>
+                        <span class="text-[9px] text-secondary text-center mt-2 whitespace-nowrap">{w.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <!-- Mensual (Año en Curso) -->
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>{`> chart --period=monthly --view=bar --type=${selectedType}`}</span>
+            </div>
+            <div class="terminal-body space-y-4 h-[250px] flex flex-col justify-between">
+              <h2 class="text-xs uppercase text-secondary">{`[ ${typeLabel}_MENSUAL_DEL_AÑO ]`}</h2>
+              
+              {maxMonthly === 1 ? (
+                <div class="flex-1 flex items-center justify-center text-muted-text text-xs border border-dashed border-border-subtle bg-bg">
+                  [ NO DATA TO PLOT ]
+                </div>
+              ) : (
+                <div class="flex-1 flex items-end justify-between pb-1 border-b border-border-subtle overflow-x-auto">
+                  <div class="min-w-[400px] flex items-end justify-between h-full">
+                    {monthlyData.map(m => {
+                      const barHeight = Math.round((m.total / maxMonthly) * 120);
+                      return (
+                        <div class="flex flex-col items-center w-7">
+                          {m.total > 0 && (
+                            <span class="text-[8px] text-main font-bold mb-1 rotation-text select-none">
+                              {Math.round(m.total / 1000)}k
+                            </span>
+                          )}
+                          <div class="w-4 bg-secondary border border-border-subtle" style={`height: ${barHeight}px;`}></div>
+                          <span class="text-[9px] text-secondary mt-1">{m.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+  </div>
+</Layout>

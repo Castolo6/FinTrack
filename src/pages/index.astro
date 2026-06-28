@@ -1,0 +1,486 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { db } from '../lib/db';
+import { formatCLP } from '../lib/utils';
+import FinanceCharts from '../components/FinanceCharts.astro';
+
+// Obtener usuario del middleware
+const user = Astro.locals.user;
+
+// Obtener estadísticas financieras
+const netWorthResult = db.prepare('SELECT SUM(balance) as total FROM accounts').get() as { total: number | null };
+const netWorth = netWorthResult?.total || 0;
+
+// Obtener tipo de rango y valor de los parámetros de búsqueda o valores por defecto
+const url = Astro.url;
+const selectedPeriod = url.searchParams.get('period') || 'month'; // 'month' | 'year' | 'total'
+const selectedValue = url.searchParams.get('value') || '';
+
+const now = new Date();
+const currentYear = now.getFullYear();
+const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+
+let start = '1970-01-01';
+let end = '9999-12-31';
+let activeMonth = `${currentYear}-${currentMonth}`;
+let activeYear = String(currentYear);
+
+if (selectedPeriod === 'month') {
+  const monthValue = selectedValue && /^\d{4}-\d{2}$/.test(selectedValue)
+    ? selectedValue
+    : `${currentYear}-${currentMonth}`;
+  activeMonth = monthValue;
+  const [y, m] = monthValue.split('-');
+  start = `${y}-${m}-01`;
+  end = `${y}-${m}-31`;
+} else if (selectedPeriod === 'year') {
+  const yearValue = selectedValue && /^\d{4}$/.test(selectedValue)
+    ? selectedValue
+    : String(currentYear);
+  activeYear = yearValue;
+  start = `${yearValue}-01-01`;
+  end = `${yearValue}-12-31`;
+} else {
+  // Total
+  start = '1970-01-01';
+  end = '9999-12-31';
+}
+
+const startOfMonth = start;
+const endOfMonth = end;
+
+const incomeResult = db.prepare(`
+  SELECT SUM(amount) as total FROM transactions 
+  WHERE type = 'income' AND date >= ? AND date <= ?
+`).get(startOfMonth, endOfMonth) as { total: number | null };
+const monthlyIncome = incomeResult?.total || 0;
+
+const expenseResult = db.prepare(`
+  SELECT SUM(amount) as total FROM transactions 
+  WHERE type = 'expense' AND date >= ? AND date <= ?
+`).get(startOfMonth, endOfMonth) as { total: number | null };
+const monthlyExpenses = expenseResult?.total || 0;
+
+const savings = monthlyIncome - monthlyExpenses;
+const savingsRate = monthlyIncome > 0 ? Math.round((savings / monthlyIncome) * 100) : 0;
+
+// Obtener cuentas activas
+const accounts = db.prepare('SELECT * FROM accounts ORDER BY name ASC').all() as Array<{
+  id: string;
+  name: string;
+  type: string;
+  balance: number;
+  currency: string;
+}>;
+
+// Obtener transacciones recientes (últimas 5 dentro del periodo seleccionado)
+const recentTransactions = db.prepare(`
+  SELECT t.*, a.name as account_name, c.name as category_name, c.icon as category_icon
+  FROM transactions t
+  JOIN accounts a ON t.account_id = a.id
+  JOIN categories c ON t.category_id = c.id
+  WHERE t.date >= ? AND t.date <= ?
+  ORDER BY t.date DESC, t.created_at DESC
+  LIMIT 5
+`).all(startOfMonth, endOfMonth) as Array<{
+  id: string;
+  amount: number;
+  type: string;
+  date: string;
+  description: string;
+  account_name: string;
+  category_name: string;
+  category_icon: string;
+}>;
+
+// Obtener categorías de gastos para formulario
+const expenseCategories = db.prepare("SELECT * FROM categories WHERE type = 'expense' ORDER BY name ASC").all() as Array<{
+  id: string;
+  name: string;
+  icon: string;
+}>;
+
+// Obtener categorías de ingresos para formulario
+const incomeCategories = db.prepare("SELECT * FROM categories WHERE type = 'income' ORDER BY name ASC").all() as Array<{
+  id: string;
+  name: string;
+  icon: string;
+}>;
+---
+
+<Layout title="FinTrack - Terminal Dashboard">
+  <div class="flex flex-col md:flex-row min-h-screen">
+    
+    <!-- Sidebar / Panel de Control -->
+    <aside class="w-full md:w-64 bg-bg-subtle border-b md:border-b-0 md:border-r border-border-main p-4 flex flex-col md:justify-between gap-4 md:gap-0">
+      <div class="flex flex-col md:flex-col justify-between gap-2 md:gap-0">
+        <!-- Logo con info de usuario compacta en mobile -->
+        <div class="flex items-center justify-between p-2 border border-dashed border-border-subtle bg-bg md:mb-8 w-full">
+          <span class="text-lg md:text-xl font-bold text-main font-mono">[FT] FinTrack</span>
+          <div class="flex items-center gap-2 md:hidden font-mono text-[10px]">
+            <span class="text-secondary">{user?.username || 'admin'}</span>
+            <a href="/api/auth/logout" class="text-red-500 border border-red-900 bg-red-950/20 px-2 py-0.5 font-bold">[X]</a>
+          </div>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="flex flex-row md:flex-col overflow-x-auto md:overflow-x-visible gap-2 pb-2 md:pb-0 md:space-y-2 text-xs md:text-sm font-mono whitespace-nowrap no-scrollbar">
+          <a href="/" class="px-3 py-2 bg-border-main text-bg font-bold">[DASHBOARD]</a>
+          <a href="/transactions" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[TRANSACCIONES]</a>
+          <a href="/budgets" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[PRESUPUESTOS]</a>
+          <a href="/charts" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[GRAFICAS]</a>
+          <a href="/goals" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[OBJETIVOS]</a>
+          <a href="/analysis" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[ANALISIS]</a>
+          <a href="/settings" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[RESPALDOS]</a>
+        </nav>
+      </div>
+
+      <!-- User/Session info & Logout (solo visible en desktop) -->
+      <div class="hidden md:block mt-8 pt-4 border-t border-border-subtle font-mono text-xs text-secondary space-y-2">
+        <div>USUARIO: <span class="text-main font-bold">{user?.username || 'admin'}</span></div>
+        <div>IP_CLIENTE: <span id="client-ip" class="text-muted-text">Red Local</span></div>
+        <a href="/api/auth/logout" class="block mt-4 text-center border border-red-900 bg-red-950/20 hover:bg-red-800 hover:text-bg text-red-500 font-bold py-1 transition-colors">
+          [ CERRAR_SESION ]
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-6 space-y-6 overflow-y-auto">
+      
+      <!-- Top Title Command & Time Filter -->
+      <div class="border-b border-border-subtle pb-4 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+        <div>
+          <h1 class="text-xl font-mono text-main font-bold">> systeminfo --finances</h1>
+          <p class="text-xs text-secondary font-mono mt-1">Última actualización: {now.toLocaleString()}</p>
+        </div>
+        
+        <!-- Time Filter Form -->
+        <form method="GET" id="filter-form" class="font-mono text-xs flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-1.5">
+            <label class="text-secondary uppercase">[ RANGO ]:</label>
+            <select 
+              name="period" 
+              onchange="document.getElementsByName('value').forEach(el => el.value = ''); this.form.submit()"
+              class="bg-surface-main border border-border-main text-main p-1.5 focus:outline-none focus:border-accent font-bold cursor-pointer"
+            >
+              <option value="month" selected={selectedPeriod === 'month'}>MENSUAL</option>
+              <option value="year" selected={selectedPeriod === 'year'}>ANUAL</option>
+              <option value="total" selected={selectedPeriod === 'total'}>TOTAL (HISTORICO)</option>
+            </select>
+          </div>
+
+          {selectedPeriod === 'month' && (
+            <div class="flex items-center gap-1.5">
+              <label class="text-secondary uppercase">[ MES ]:</label>
+              <input 
+                type="month" 
+                name="value" 
+                value={activeMonth} 
+                onchange="this.form.submit()" 
+                class="bg-surface-main border border-border-main text-main p-1.5 focus:outline-none focus:border-accent font-bold cursor-pointer"
+              />
+            </div>
+          )}
+
+          {selectedPeriod === 'year' && (
+            <div class="flex items-center gap-1.5">
+              <label class="text-secondary uppercase">[ AÑO ]:</label>
+              <select 
+                name="value" 
+                onchange="this.form.submit()" 
+                class="bg-surface-main border border-border-main text-main p-1.5 focus:outline-none focus:border-accent font-bold cursor-pointer"
+              >
+                {[currentYear - 2, currentYear - 1, currentYear, currentYear + 1].map(y => (
+                  <option value={String(y)} selected={activeYear === String(y)}>{y}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </form>
+      </div>
+
+      <!-- Financial Metrics Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
+        <div class="border border-border-main bg-surface-main p-4">
+          <div class="text-xs text-secondary uppercase">[ NET_WORTH ]</div>
+          <div class="text-2xl font-bold text-main mt-2">{formatCLP(netWorth)}</div>
+        </div>
+        <div class="border border-border-main bg-surface-main p-4">
+          <div class="text-xs text-secondary uppercase">
+            {selectedPeriod === 'month' ? '[ INCOMES_MONTH ]' : selectedPeriod === 'year' ? '[ INCOMES_YEAR ]' : '[ INCOMES_TOTAL ]'}
+          </div>
+          <div class="text-2xl font-bold text-green-500 mt-2">+{formatCLP(monthlyIncome)}</div>
+        </div>
+        <div class="border border-border-main bg-surface-main p-4">
+          <div class="text-xs text-secondary uppercase">
+            {selectedPeriod === 'month' ? '[ EXPENSES_MONTH ]' : selectedPeriod === 'year' ? '[ EXPENSES_YEAR ]' : '[ EXPENSES_TOTAL ]'}
+          </div>
+          <div class="text-2xl font-bold text-red-500 mt-2">-{formatCLP(monthlyExpenses)}</div>
+        </div>
+        <div class="border border-border-main bg-surface-main p-4">
+          <div class="text-xs text-secondary uppercase">[ SAVINGS_RATE ]</div>
+          <div class="text-2xl font-bold mt-2" class:list={{ 'text-green-500': savingsRate > 0, 'text-main': savingsRate <= 0 }}>
+            {savingsRate}%
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Section -->
+      <FinanceCharts startDate={startOfMonth} endDate={endOfMonth} />
+
+      <!-- Interactive Grid: Cuentas y Registro de Datos -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Side: Cuentas y Transacciones -->
+        <section class="lg:col-span-8 space-y-6">
+          
+          <!-- Cuentas -->
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>> ls -la ./cuentas</span>
+            </div>
+            <div class="terminal-body font-mono text-sm space-y-4">
+              {accounts.length === 0 ? (
+                <div class="text-secondary p-2 border border-dashed border-border-subtle bg-bg text-center">
+                  No se encontraron cuentas activas. Utiliza el formulario de la derecha para inicializar una cuenta.
+                </div>
+              ) : (
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {accounts.map(acc => (
+                    <div class="border border-border-subtle p-3 bg-bg-subtle flex justify-between items-center">
+                      <div>
+                        <div class="font-bold text-main">{acc.name}</div>
+                        <div class="text-xs text-secondary uppercase">{acc.type}</div>
+                      </div>
+                      <div class="font-bold text-main">{formatCLP(acc.balance)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <!-- Transacciones Recientes -->
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>> tail -n 5 ./transacciones.log</span>
+            </div>
+            <div class="terminal-body font-mono text-sm">
+              {recentTransactions.length === 0 ? (
+                <div class="text-secondary p-2 border border-dashed border-border-subtle bg-bg text-center">
+                  Ninguna transacción registrada en el periodo seleccionado.
+                </div>
+              ) : (
+                <div class="overflow-x-auto">
+                  <table class="w-full text-left border-collapse">
+                    <thead>
+                      <tr class="border-b border-border-main text-secondary text-xs uppercase">
+                        <th class="py-2 px-1">Fecha</th>
+                        <th class="py-2 px-1">Cat.</th>
+                        <th class="py-2 px-1">Cuenta</th>
+                        <th class="py-2 px-1">Descripción</th>
+                        <th class="py-2 px-1 text-right">Importe</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border-subtle">
+                      {recentTransactions.map(t => (
+                        <tr class="hover:bg-surface-main">
+                          <td class="py-2 px-1 text-xs text-secondary whitespace-nowrap">{t.date}</td>
+                          <td class="py-2 px-1 whitespace-nowrap">{t.category_icon} {t.category_name}</td>
+                          <td class="py-2 px-1 text-xs text-secondary">{t.account_name}</td>
+                          <td class="py-2 px-1">{t.description || '-'}</td>
+                          <td class={`py-2 px-1 text-right font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
+                            {t.type === 'income' ? '+' : '-'}{formatCLP(t.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+
+        </section>
+
+        <!-- Right Side: Formularios Rápidos (Cuentas y Transacciones) -->
+        <aside class="lg:col-span-4 space-y-6">
+          
+          <!-- Registrar Transacción -->
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>> write ./registro_transaccion.sh</span>
+            </div>
+            <div class="terminal-body font-mono text-xs">
+              {accounts.length === 0 ? (
+                <p class="text-secondary text-center">Registra una cuenta primero antes de poder ingresar transacciones.</p>
+              ) : (
+                <form id="tx-form" class="space-y-3">
+                  <div>
+                    <label class="block text-secondary mb-1">TIPO</label>
+                    <select id="tx-type" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                      <option value="expense">GASTO (-)</option>
+                      <option value="income">INGRESO (+)</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-secondary mb-1">CUENTA</label>
+                    <select id="tx-account" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                      {accounts.map(acc => (
+                        <option value={acc.id}>{acc.name} ({formatCLP(acc.balance)})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label class="block text-secondary mb-1">CATEGORÍA</label>
+                    <select id="tx-category" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                      {/* Por defecto mostramos categorías de gastos */}
+                      {expenseCategories.map(cat => (
+                        <option value={cat.id}>{cat.icon} {cat.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label class="block text-secondary mb-1">IMPORTE</label>
+                    <input type="number" id="tx-amount" step="0.01" required placeholder="0.00" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                  </div>
+
+                  <div>
+                    <label class="block text-secondary mb-1">FECHA</label>
+                    <input type="date" id="tx-date" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                  </div>
+
+                  <div>
+                    <label class="block text-secondary mb-1">DESCRIPCIÓN</label>
+                    <input type="text" id="tx-desc" placeholder="Detalles de transacción" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                  </div>
+
+                  <button type="submit" class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 transition-colors cursor-pointer">[ REGISTRAR ]</button>
+                </form>
+              )}
+            </div>
+          </div>
+
+          <!-- Crear Cuenta -->
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>> write ./crear_cuenta.sh</span>
+            </div>
+            <div class="terminal-body font-mono text-xs">
+              <form id="account-form" class="space-y-3">
+                <div>
+                  <label class="block text-secondary mb-1">NOMBRE CUENTA</label>
+                  <input type="text" id="acc-name" required placeholder="ej: Billetera, Banco principal" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                </div>
+                <div>
+                  <label class="block text-secondary mb-1">TIPO CUENTA</label>
+                  <select id="acc-type" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                    <option value="cash">EFECTIVO (CASH)</option>
+                    <option value="bank">BANCO (BANK)</option>
+                    <option value="credit_card">TARJETA CRÉDITO</option>
+                    <option value="investment">INVERSIONES</option>
+                    <option value="other">OTRO</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-secondary mb-1">SALDO INICIAL</label>
+                  <input type="number" id="acc-balance" step="0.01" value="0.00" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                </div>
+                <button type="submit" class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 transition-colors cursor-pointer">[ CREAR_CUENTA ]</button>
+              </form>
+            </div>
+          </div>
+
+        </aside>
+      </div>
+
+    </main>
+  </div>
+</Layout>
+
+<script define:vars={{ expenseCategories, incomeCategories }}>
+  // Poner fecha actual por defecto en el input de fecha
+  const dateInput = document.getElementById('tx-date');
+  if (dateInput) {
+    const today = new Date().toISOString().split('T')[0];
+    dateInput.value = today;
+  }
+
+  // Dinamizar categorías de transacciones según el tipo (gasto o ingreso)
+  const txTypeSelect = document.getElementById('tx-type');
+  const txCategorySelect = document.getElementById('tx-category');
+
+  if (txTypeSelect && txCategorySelect) {
+    txTypeSelect.addEventListener('change', (e) => {
+      const type = e.target.value;
+      const categories = type === 'income' ? incomeCategories : expenseCategories;
+      
+      txCategorySelect.innerHTML = '';
+      categories.forEach(cat => {
+        const option = document.createElement('option');
+        option.value = cat.id;
+        option.textContent = `${cat.icon} ${cat.name}`;
+        txCategorySelect.appendChild(option);
+      });
+    });
+  }
+
+  // Crear Cuenta
+  const accountForm = document.getElementById('account-form');
+  if (accountForm) {
+    accountForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('acc-name').value;
+      const type = document.getElementById('acc-type').value;
+      const balance = parseFloat(document.getElementById('acc-balance').value || '0');
+
+      try {
+        const res = await fetch('/api/accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, type, balance })
+        });
+        if (!res.ok) throw new Error('Error al crear la cuenta');
+        window.location.reload();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  }
+
+  // Registrar Transacción
+  const txForm = document.getElementById('tx-form');
+  if (txForm) {
+    txForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const type = document.getElementById('tx-type').value;
+      const account_id = document.getElementById('tx-account').value;
+      const category_id = document.getElementById('tx-category').value;
+      const amount = parseFloat(document.getElementById('tx-amount').value);
+      const date = document.getElementById('tx-date').value;
+      const description = document.getElementById('tx-desc').value;
+
+      try {
+        const res = await fetch('/api/transactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, account_id, category_id, amount, date, description })
+        });
+        if (!res.ok) throw new Error('Error al registrar la transacción');
+        window.location.reload();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  }
+
+  // Intentar obtener la IP local ficticia/real
+  const clientIpEl = document.getElementById('client-ip');
+  if (clientIpEl) {
+    clientIpEl.textContent = window.location.hostname;
+  }
+</script>

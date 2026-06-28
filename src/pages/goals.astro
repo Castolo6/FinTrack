@@ -1,0 +1,514 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { db } from '../lib/db';
+import { formatCLP } from '../lib/utils';
+
+const user = Astro.locals.user;
+
+// Obtener objetivos de ahorro
+const goalsList = db.prepare(`
+  SELECT * FROM saving_goals 
+  ORDER BY created_at DESC
+`).all() as Array<{
+  id: string;
+  name: string;
+  target_amount: number;
+  current_amount: number;
+  saving_platform: string | null;
+  deadline: string | null;
+}>;
+
+// Obtener cuentas activas para relacionar transacciones
+const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY name ASC').all() as Array<{
+  id: string;
+  name: string;
+  balance: number;
+}>;
+
+// Mapear porcentajes y barras de progreso ASCII
+const goals = goalsList.map(g => {
+  const percent = g.target_amount > 0 ? Math.min(100, Math.round((g.current_amount / g.target_amount) * 100)) : 0;
+  const bars = Math.min(10, Math.max(0, Math.round(percent / 10)));
+  const progress_bar = '[' + '█'.repeat(bars) + '░'.repeat(10 - bars) + ']';
+
+  return {
+    ...g,
+    percent,
+    progress_bar
+  };
+});
+---
+
+<Layout title="FinTrack - Objetivos y Bolsillos">
+  <div class="flex flex-col md:flex-row min-h-screen">
+    
+    <!-- Sidebar / Panel de Control -->
+    <aside class="w-full md:w-64 bg-bg-subtle border-b md:border-b-0 md:border-r border-border-main p-4 flex flex-col md:justify-between gap-4 md:gap-0">
+      <div class="flex flex-col md:flex-col justify-between gap-2 md:gap-0">
+        <!-- Logo con info de usuario compacta en mobile -->
+        <div class="flex items-center justify-between p-2 border border-dashed border-border-subtle bg-bg md:mb-8 w-full">
+          <span class="text-lg md:text-xl font-bold text-main font-mono">[FT] FinTrack</span>
+          <div class="flex items-center gap-2 md:hidden font-mono text-[10px]">
+            <span class="text-secondary">{user?.username || 'admin'}</span>
+            <a href="/api/auth/logout" class="text-red-500 border border-red-900 bg-red-950/20 px-2 py-0.5 font-bold">[X]</a>
+          </div>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="flex flex-row md:flex-col overflow-x-auto md:overflow-x-visible gap-2 pb-2 md:pb-0 md:space-y-2 text-xs md:text-sm font-mono whitespace-nowrap no-scrollbar">
+          <a href="/" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[DASHBOARD]</a>
+          <a href="/transactions" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[TRANSACCIONES]</a>
+          <a href="/budgets" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[PRESUPUESTOS]</a>
+          <a href="/charts" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[GRAFICAS]</a>
+          <a href="/goals" class="px-3 py-2 bg-border-main text-bg font-bold">[OBJETIVOS]</a>
+          <a href="/analysis" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[ANALISIS]</a>
+          <a href="/settings" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[RESPALDOS]</a>
+        </nav>
+      </div>
+
+      <!-- User/Session info & Logout (solo visible en desktop) -->
+      <div class="hidden md:block mt-8 pt-4 border-t border-border-subtle font-mono text-xs text-secondary space-y-2">
+        <div>USUARIO: <span class="text-main font-bold">{user?.username || 'admin'}</span></div>
+        <a href="/api/auth/logout" class="block mt-4 text-center border border-red-900 bg-red-950/20 hover:bg-red-800 hover:text-bg text-red-500 font-bold py-1 transition-colors">
+          [ CERRAR_SESION ]
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-6 space-y-6 overflow-y-auto font-mono">
+      
+      <!-- Top Title Command -->
+      <div class="border-b border-border-subtle pb-4">
+        <h1 class="text-xl text-main font-bold">> cat ./saving_goals.db</h1>
+        <p class="text-xs text-secondary mt-1">Objetivos de ahorro y bolsillos virtuales de dinero.</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Side: Lista de Objetivos/Bolsillos -->
+        <section class="lg:col-span-8 space-y-6">
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>fintrack — goals_progress.log — {goals.length} activos</span>
+            </div>
+            <div class="terminal-body space-y-6">
+              {goals.length === 0 ? (
+                <div class="text-secondary p-2 border border-dashed border-border-subtle bg-bg text-center text-sm">
+                  No se han creado bolsillos ni objetivos de ahorro. Utiliza el formulario de la derecha para definir tu primer objetivo.
+                </div>
+              ) : (
+                <div class="space-y-6">
+                  {goals.map(g => (
+                    <div class="border border-border-subtle p-4 bg-bg-subtle text-sm space-y-3">
+                      <div class="flex flex-wrap justify-between gap-2 font-bold">
+                        <span class="text-main">{g.name}</span>
+                        <span class="text-secondary">
+                          {formatCLP(g.current_amount)} / <span class="text-main">{formatCLP(g.target_amount)}</span>
+                        </span>
+                      </div>
+                      
+                      <!-- Meta / Plazo y Plataforma -->
+                      <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-text">
+                        {g.saving_platform && (
+                          <div>APLICACIÓN: <span class="text-secondary font-bold">{g.saving_platform.toUpperCase()}</span></div>
+                        )}
+                        {g.deadline && (
+                          <div>PLAZO LÍMITE: {g.deadline}</div>
+                        )}
+                      </div>
+
+                      {/* Barra de progreso */}
+                      <div class="flex items-center gap-4 text-xs">
+                        <span class="text-accent">{g.progress_bar}</span>
+                        <span class={g.percent >= 100 ? 'text-green-500 font-bold' : 'text-secondary'}>
+                          {g.percent}% {g.percent >= 100 ? '[COMPLETADO 🎉]' : ''}
+                        </span>
+                      </div>
+
+                      <!-- Acciones rápidas de depósito/retiro -->
+                      <div class="border-t border-border-subtle pt-3 mt-2 flex flex-wrap items-center justify-between gap-4 text-xs">
+                        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                          {accounts.length === 0 ? (
+                            <span class="text-secondary text-[10px]">[Crea una cuenta para operar]</span>
+                          ) : (
+                            <div class="flex flex-wrap items-center gap-2 w-full">
+                              <div class="flex gap-2 w-full sm:w-auto">
+                                <input 
+                                  type="number" 
+                                  placeholder="Monto" 
+                                  id={`amount-${g.id}`}
+                                  class="w-24 bg-bg border border-border-main text-main p-1 focus:outline-none focus:border-accent text-xs flex-1 sm:flex-initial" 
+                                />
+                                <select 
+                                  id={`account-${g.id}`}
+                                  class="bg-bg border border-border-main text-main p-1 focus:outline-none focus:border-accent text-xs max-w-[160px] flex-1 sm:flex-initial"
+                                >
+                                  {accounts.map(acc => (
+                                    <option value={acc.id}>{acc.name} ({formatCLP(acc.balance)})</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div class="flex gap-2 w-full sm:w-auto">
+                                <input 
+                                  type="text" 
+                                  placeholder="Motivo (para retiro)" 
+                                  id={`reason-${g.id}`}
+                                  class="w-full sm:w-36 bg-bg border border-border-main text-main p-1 focus:outline-none focus:border-accent text-xs flex-1" 
+                                />
+                              </div>
+                              <div class="flex gap-2 w-full sm:w-auto">
+                                <button 
+                                  class="deposit-btn bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-1 px-2 transition-colors cursor-pointer flex-1 sm:flex-initial"
+                                  data-id={g.id}
+                                >
+                                  [DEPOSITAR]
+                                </button>
+                                <button 
+                                  class="withdraw-btn bg-bg border border-border-main text-secondary hover:text-main font-bold py-1 px-2 transition-colors cursor-pointer flex-1 sm:flex-initial"
+                                  data-id={g.id}
+                                >
+                                  [RETIRAR]
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div class="flex justify-end w-full sm:w-auto mt-2 sm:mt-0">
+                          <button 
+                            class="delete-btn text-red-500 hover:text-red-300 font-bold underline cursor-pointer bg-transparent border-0"
+                            data-id={g.id}
+                          >
+                            [ELIMINAR]
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <!-- Right Side: Crear Bolsillo/Objetivo -->
+        <aside class="lg:col-span-4 space-y-6">
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>> write ./crear_objetivo.sh</span>
+            </div>
+            <div class="terminal-body text-xs space-y-3">
+              <form id="goal-form" class="space-y-3">
+                <div>
+                  <label class="block text-secondary mb-1">NOMBRE OBJETIVO / BOLSILLO</label>
+                  <input 
+                    type="text" 
+                    id="goal-name" 
+                    required 
+                    placeholder="ej: Ahorro Fin de Año, Vacaciones" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" 
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-secondary mb-1">MONTO OBJETIVO (META)</label>
+                  <input 
+                    type="number" 
+                    id="goal-target" 
+                    required 
+                    placeholder="ej: 1000000" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" 
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-secondary mb-1">MONTO INICIAL (OPCIONAL)</label>
+                  <input 
+                    type="number" 
+                    id="goal-current" 
+                    placeholder="0" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" 
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-secondary mb-1">CUENTA DE ORIGEN (SI HAY MONTO INICIAL)</label>
+                  <select 
+                    id="goal-account" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent"
+                  >
+                    <option value="">-- Seleccionar Cuenta --</option>
+                    {accounts.map(acc => (
+                      <option value={acc.id}>{acc.name} ({formatCLP(acc.balance)})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-secondary mb-1">APLICACIÓN / PLATAFORMA DE AHORRO</label>
+                  <input 
+                    type="text" 
+                    id="goal-platform" 
+                    placeholder="ej: Fintual, Mercado Pago, Banco" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" 
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-secondary mb-1">FECHA LÍMITE (OPCIONAL)</label>
+                  <input 
+                    type="date" 
+                    id="goal-deadline" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" 
+                  />
+                </div>
+
+                <button 
+                  type="submit" 
+                  class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 transition-colors cursor-pointer"
+                >
+                  [ CREAR_OBJETIVO ]
+                </button>
+              </form>
+            </div>
+          </div>
+        </aside>
+
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Modal de Confirmación Estilo Terminal -->
+  <div id="confirm-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-xs font-mono p-4">
+    <div class="terminal-window w-full max-w-sm m-0 border border-border-main bg-bg">
+      <div class="terminal-header flex justify-between items-center">
+        <span>> confirm --action</span>
+        <button id="modal-close-x" class="text-secondary hover:text-main bg-transparent border-0 cursor-pointer font-bold">[X]</button>
+      </div>
+      <div class="terminal-body space-y-4 p-4 text-xs">
+        <p id="modal-message" class="text-main"></p>
+        <div class="flex justify-end gap-3 pt-2">
+          <button id="modal-cancel-btn" class="bg-bg border border-border-main hover:border-accent text-secondary hover:text-main px-3 py-1.5 transition-colors cursor-pointer uppercase font-bold">
+            [ CANCELAR ]
+          </button>
+          <button id="modal-confirm-btn" class="bg-border-main hover:bg-accent text-bg hover:text-bg font-bold px-3 py-1.5 transition-colors cursor-pointer uppercase">
+            [ CONFIRMAR ]
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  // Crear Objetivo
+  const goalForm = document.getElementById('goal-form');
+  goalForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = (document.getElementById('goal-name') as HTMLInputElement).value;
+    const target_amount = parseFloat((document.getElementById('goal-target') as HTMLInputElement).value);
+    const current_amount = parseFloat((document.getElementById('goal-current') as HTMLInputElement).value || '0');
+    const account_id = (document.getElementById('goal-account') as HTMLSelectElement).value;
+    const saving_platform = (document.getElementById('goal-platform') as HTMLInputElement).value;
+    const deadline = (document.getElementById('goal-deadline') as HTMLInputElement).value;
+
+    if (current_amount > 0 && !account_id) {
+      alert('> ERROR: Selecciona una cuenta de origen para el monto inicial.');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/goals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, target_amount, current_amount, saving_platform, account_id, deadline })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error al crear el objetivo.');
+      }
+
+      window.location.reload();
+    } catch (err: any) {
+      alert(`> ERROR: ${err.message}`);
+    }
+  });
+
+  // Elementos del Modal
+  const confirmModal = document.getElementById('confirm-modal') as HTMLDivElement;
+  const modalMessage = document.getElementById('modal-message') as HTMLParagraphElement;
+  const modalConfirmBtn = document.getElementById('modal-confirm-btn') as HTMLButtonElement;
+  const modalCancelBtn = document.getElementById('modal-cancel-btn') as HTMLButtonElement;
+  const modalCloseX = document.getElementById('modal-close-x') as HTMLButtonElement;
+
+  let pendingAction: (() => Promise<void>) | null = null;
+
+  function openModal(message: string, action: () => Promise<void>) {
+    if (modalMessage && confirmModal) {
+      modalMessage.textContent = message;
+      pendingAction = action;
+      confirmModal.classList.remove('hidden');
+    }
+  }
+
+  function closeModal() {
+    if (confirmModal) {
+      confirmModal.classList.add('hidden');
+      pendingAction = null;
+    }
+  }
+
+  modalCancelBtn?.addEventListener('click', closeModal);
+  modalCloseX?.addEventListener('click', closeModal);
+  
+  modalConfirmBtn?.addEventListener('click', async () => {
+    if (pendingAction) {
+      modalConfirmBtn.disabled = true;
+      const originalText = modalConfirmBtn.textContent;
+      modalConfirmBtn.textContent = '[ PROCESANDO... ]';
+      await pendingAction();
+      modalConfirmBtn.disabled = false;
+      modalConfirmBtn.textContent = originalText;
+      closeModal();
+    }
+  });
+
+  // Depositar Fondos
+  const depositButtons = document.querySelectorAll('.deposit-btn');
+  depositButtons.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const target = e.target as HTMLButtonElement;
+      const id = target.getAttribute('data-id');
+      if (!id) return;
+
+      const amountInput = document.getElementById(`amount-${id}`) as HTMLInputElement;
+      const amount = parseFloat(amountInput.value);
+
+      if (isNaN(amount) || amount <= 0) {
+        alert('> ERROR: Ingresa un monto de depósito válido.');
+        return;
+      }
+
+      const accountSelect = document.getElementById(`account-${id}`) as HTMLSelectElement;
+      const account_id = accountSelect.value;
+      const accountName = accountSelect.options[accountSelect.selectedIndex].text;
+
+      // Obtener el nombre del bolsillo para el mensaje
+      const goalCard = target.closest('.bg-bg-subtle');
+      const goalName = goalCard?.querySelector('.text-main')?.textContent || 'Bolsillo';
+
+      const formatAmount = amount.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 });
+      const msg = `¿Estás seguro de que deseas DEPOSITAR ${formatAmount} desde la cuenta "${accountName}" en el bolsillo "${goalName}"?`;
+
+      openModal(msg, async () => {
+        try {
+          const response = await fetch('/api/goals', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, amount, action: 'deposit', account_id })
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Error al depositar.');
+          }
+
+          window.location.reload();
+        } catch (err: any) {
+          alert(`> ERROR: ${err.message}`);
+        }
+      });
+    });
+  });
+
+  // Retirar Fondos
+  const withdrawButtons = document.querySelectorAll('.withdraw-btn');
+  withdrawButtons.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const target = e.target as HTMLButtonElement;
+      const id = target.getAttribute('data-id');
+      if (!id) return;
+
+      const amountInput = document.getElementById(`amount-${id}`) as HTMLInputElement;
+      const amount = parseFloat(amountInput.value);
+
+      if (isNaN(amount) || amount <= 0) {
+        alert('> ERROR: Ingresa un monto de retiro válido.');
+        return;
+      }
+
+      const accountSelect = document.getElementById(`account-${id}`) as HTMLSelectElement;
+      const account_id = accountSelect.value;
+      const accountName = accountSelect.options[accountSelect.selectedIndex].text;
+
+      const reasonInput = document.getElementById(`reason-${id}`) as HTMLInputElement;
+      const reason = reasonInput.value.trim();
+
+      if (!reason) {
+        alert('> ERROR: Debes ingresar el motivo o descripción del retiro.');
+        return;
+      }
+
+      // Obtener el nombre del bolsillo para el mensaje
+      const goalCard = target.closest('.bg-bg-subtle');
+      const goalName = goalCard?.querySelector('.text-main')?.textContent || 'Bolsillo';
+
+      const formatAmount = amount.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 });
+      const msg = `¿Estás seguro de que deseas RETIRAR ${formatAmount} del bolsillo "${goalName}" y depositarlo en la cuenta "${accountName}"?\nMotivo: "${reason}"`;
+
+      openModal(msg, async () => {
+        try {
+          const response = await fetch('/api/goals', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, amount, action: 'withdraw', account_id, reason })
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Error al retirar.');
+          }
+
+          window.location.reload();
+        } catch (err: any) {
+          alert(`> ERROR: ${err.message}`);
+        }
+      });
+    });
+  });
+
+  // Eliminar Objetivo
+  const deleteButtons = document.querySelectorAll('.delete-btn');
+  deleteButtons.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const target = e.target as HTMLButtonElement;
+      const id = target.getAttribute('data-id');
+      if (!id) return;
+
+      const goalCard = target.closest('.bg-bg-subtle');
+      const goalName = goalCard?.querySelector('.text-main')?.textContent || 'Bolsillo';
+
+      const msg = `¿Estás seguro de que deseas ELIMINAR el bolsillo "${goalName}" permanentemente?`;
+
+      openModal(msg, async () => {
+        try {
+          const response = await fetch(`/api/goals/${id}`, {
+            method: 'DELETE',
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Error al eliminar el objetivo.');
+          }
+
+          window.location.reload();
+        } catch (err: any) {
+          alert(`> ERROR: ${err.message}`);
+        }
+      });
+    });
+  });
+</script>

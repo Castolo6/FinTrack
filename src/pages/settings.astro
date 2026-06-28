@@ -1,0 +1,191 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const user = Astro.locals.user;
+const now = new Date();
+---
+
+<Layout title="FinTrack - Configuración y Respaldos">
+  <div class="flex flex-col md:flex-row min-h-screen">
+    
+    <!-- Sidebar / Panel de Control -->
+    <aside class="w-full md:w-64 bg-bg-subtle border-b md:border-b-0 md:border-r border-border-main p-4 flex flex-col md:justify-between gap-4 md:gap-0">
+      <div class="flex flex-col md:flex-col justify-between gap-2 md:gap-0">
+        <!-- Logo con info de usuario compacta en mobile -->
+        <div class="flex items-center justify-between p-2 border border-dashed border-border-subtle bg-bg md:mb-8 w-full">
+          <span class="text-lg md:text-xl font-bold text-main font-mono">[FT] FinTrack</span>
+          <div class="flex items-center gap-2 md:hidden font-mono text-[10px]">
+            <span class="text-secondary">{user?.username || 'admin'}</span>
+            <a href="/api/auth/logout" class="text-red-500 border border-red-900 bg-red-950/20 px-2 py-0.5 font-bold">[X]</a>
+          </div>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="flex flex-row md:flex-col overflow-x-auto md:overflow-x-visible gap-2 pb-2 md:pb-0 md:space-y-2 text-xs md:text-sm font-mono whitespace-nowrap no-scrollbar">
+          <a href="/" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[DASHBOARD]</a>
+          <a href="/transactions" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[TRANSACCIONES]</a>
+          <a href="/budgets" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[PRESUPUESTOS]</a>
+          <a href="/charts" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[GRAFICAS]</a>
+          <a href="/goals" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[OBJETIVOS]</a>
+          <a href="/analysis" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[ANALISIS]</a>
+          <a href="/settings" class="px-3 py-2 bg-border-main text-bg font-bold">[RESPALDOS]</a>
+        </nav>
+      </div>
+
+      <!-- User/Session info & Logout (solo visible en desktop) -->
+      <div class="hidden md:block mt-8 pt-4 border-t border-border-subtle font-mono text-xs text-secondary space-y-2">
+        <div>USUARIO: <span class="text-main font-bold">{user?.username || 'admin'}</span></div>
+        <a href="/api/auth/logout" class="block mt-4 text-center border border-red-900 bg-red-950/20 hover:bg-red-800 hover:text-bg text-red-500 font-bold py-1 transition-colors">
+          [ CERRAR_SESION ]
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-6 space-y-6 overflow-y-auto">
+      
+      <!-- Top Title Command -->
+      <div class="border-b border-border-subtle pb-4">
+        <h1 class="text-xl font-mono text-main font-bold">> systemctl --service=backups</h1>
+        <p class="text-xs text-secondary font-mono mt-1">Gestión de datos locales y copias de seguridad.</p>
+      </div>
+
+      <!-- Panels Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <!-- Export Panel -->
+        <div class="terminal-window m-0">
+          <div class="terminal-header">
+            <span>> export --database=sqlite</span>
+          </div>
+          <div class="terminal-body font-mono text-sm space-y-4">
+            <h2 class="text-lg font-bold text-main">Exportar Respaldo</h2>
+            <p class="text-secondary text-xs">
+              Descarga una copia completa de tus finanzas en formato JSON. Esta copia incluye tus usuarios, cuentas, categorías registradas, transacciones y presupuestos.
+            </p>
+            
+            <a 
+              href="/api/backup/export" 
+              download
+              class="inline-block text-center bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 px-4 font-mono transition-colors text-xs uppercase cursor-pointer"
+            >
+              [ DESCARGAR_RESPALDO_JSON ]
+            </a>
+          </div>
+        </div>
+
+        <!-- Import Panel -->
+        <div class="terminal-window m-0">
+          <div class="terminal-header">
+            <span>> import --file=fintrack_backup.json</span>
+          </div>
+          <div class="terminal-body font-mono text-sm space-y-4">
+            <h2 class="text-lg font-bold text-main">Restaurar Respaldo</h2>
+            <p class="text-secondary text-xs">
+              Sube un archivo de respaldo JSON previamente exportado. <span class="text-red-500 font-bold">PRECAUCIÓN:</span> Esto sobrescribirá y reemplazará todos tus datos financieros actuales de forma permanente.
+            </p>
+
+            <form id="restore-form" class="space-y-4">
+              <div class="border border-dashed border-border-main p-4 bg-surface-main text-center cursor-pointer relative hover:border-accent">
+                <input 
+                  type="file" 
+                  id="backup-file" 
+                  accept=".json"
+                  required
+                  class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                />
+                <span id="file-label" class="text-xs text-secondary font-mono">Seleccionar archivo .json</span>
+              </div>
+
+              <!-- Status Output -->
+              <div id="status-output" class="hidden text-xs p-2 border"></div>
+
+              <button 
+                type="submit" 
+                class="w-full bg-red-950/20 hover:bg-red-800 border border-red-900 text-red-500 hover:text-bg font-bold py-2 font-mono transition-colors text-xs uppercase cursor-pointer"
+              >
+                [ EJECUTAR_RESTAURACION ]
+              </button>
+            </form>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+  </div>
+</Layout>
+
+<script>
+  const fileInput = document.getElementById('backup-file') as HTMLInputElement;
+  const fileLabel = document.getElementById('file-label') as HTMLSpanElement;
+  const form = document.getElementById('restore-form') as HTMLFormElement;
+  const statusOutput = document.getElementById('status-output') as HTMLDivElement;
+
+  fileInput?.addEventListener('change', () => {
+    if (fileInput.files && fileInput.files.length > 0) {
+      fileLabel.textContent = `Archivo: ${fileInput.files[0].name}`;
+      fileLabel.classList.remove('text-secondary');
+      fileLabel.classList.add('text-main', 'font-bold');
+    } else {
+      fileLabel.textContent = 'Seleccionar archivo .json';
+    }
+  });
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    if (!fileInput.files || fileInput.files.length === 0) {
+      return;
+    }
+
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+
+    statusOutput.classList.remove('hidden', 'border-red-900', 'text-red-500', 'bg-red-950/20', 'border-green-900', 'text-green-500', 'bg-green-950/20');
+    statusOutput.textContent = '> Leyendo archivo de respaldo...';
+    statusOutput.classList.add('border-border-main', 'text-secondary', 'bg-surface-main');
+
+    const confirmed = confirm('¿Estás seguro de que deseas restaurar este respaldo? Todos tus datos actuales serán reemplazados y la sesión se cerrará.');
+    if (!confirmed) {
+      statusOutput.classList.add('hidden');
+      return;
+    }
+
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string;
+        const backupData = JSON.parse(text);
+
+        statusOutput.textContent = '> Transfiriendo datos al servidor...';
+
+        const response = await fetch('/api/backup/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(backupData)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Error al restaurar el respaldo.');
+        }
+
+        statusOutput.classList.remove('border-border-main', 'text-secondary', 'bg-surface-main');
+        statusOutput.classList.add('border-green-900', 'text-green-500', 'bg-green-950/20');
+        statusOutput.textContent = '✅ Base de datos restaurada correctamente. Redirigiendo a inicio de sesión...';
+
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 2000);
+
+      } catch (err: any) {
+        statusOutput.classList.remove('border-border-main', 'text-secondary', 'bg-surface-main');
+        statusOutput.classList.add('border-red-900', 'text-red-500', 'bg-red-950/20');
+        statusOutput.textContent = `> ERROR: ${err.message}`;
+      }
+    };
+
+    reader.readAsText(file);
+  });
+</script>
