@@ -119,7 +119,8 @@ const formatCurrency = (amount: number) => {
         const id = target.getAttribute('data-id');
         if (!id) return;
 
-        if (!confirm(isEn ? 'Restore this transaction and its balances?' : '¿Restaurar esta transacción y sus saldos?')) {
+        const confirmed = await window.FinTrackConfirm(isEn ? 'Restore this transaction and its balances?' : '¿Restaurar esta transacción y sus saldos?');
+        if (!confirmed) {
           return;
         }
 
@@ -141,7 +142,7 @@ const formatCurrency = (amount: number) => {
 
           window.location.reload();
         } catch (err: any) {
-          alert('Error: ' + err.message);
+          window.FinTrackAlert('Error: ' + err.message);
           target.textContent = originalText;
           target.disabled = false;
         }

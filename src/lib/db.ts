@@ -163,6 +163,11 @@ export function initDatabase() {
     } catch (e) { /* La columna ya existe */ }
   }
 
+  // Migración: Límite de crédito para tarjetas
+  try {
+    db.prepare('ALTER TABLE accounts ADD COLUMN credit_limit REAL DEFAULT 0.0').run();
+  } catch (e) { /* La columna ya existe */ }
+
   // Crear algunas categorías por defecto si la tabla está vacía
   const categoriesCount = db.prepare('SELECT COUNT(*) as count FROM categories').get() as { count: number };
   if (categoriesCount.count === 0) {

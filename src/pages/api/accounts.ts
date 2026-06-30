@@ -8,7 +8,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     const data = await request.json();
-    const { name, type, balance = 0, currency = 'CLP' } = data;
+    const { name, type, balance = 0, currency = 'CLP', credit_limit = 0 } = data;
 
     if (!name || !type) {
       return new Response(
@@ -25,14 +25,22 @@ export const POST: APIRoute = async ({ request, locals }) => {
       );
     }
 
+    const existingAccount = db.prepare('SELECT id FROM accounts WHERE LOWER(name) = LOWER(?) AND type = ?').get(name.trim(), type);
+    if (existingAccount) {
+      return new Response(
+        JSON.stringify({ error: `Ya existe una cuenta con el nombre "${name.trim()}" de este tipo.` }),
+        { status: 400 }
+      );
+    }
+
     const id = crypto.randomUUID();
 
     const createAccount = db.transaction(() => {
       // 1. Crear la cuenta
       db.prepare(`
-        INSERT INTO accounts (id, name, type, balance, currency)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(id, name.trim(), type, balance, currency);
+        INSERT INTO accounts (id, name, type, balance, currency, credit_limit)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(id, name.trim(), type, balance, currency, type === 'credit_card' ? credit_limit : 0);
 
       // 2. Si tiene saldo inicial, registrar transacción de apertura
       if (balance !== 0) {

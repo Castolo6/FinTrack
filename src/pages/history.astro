@@ -18,6 +18,7 @@ const transactions = db.prepare(`
   FROM transactions t
   JOIN accounts a ON t.account_id = a.id
   JOIN categories c ON t.category_id = c.id
+  WHERE t.deleted_at IS NULL
   ORDER BY t.date DESC, t.created_at DESC
 `).all() as Array<{
   id: string;
@@ -201,7 +202,7 @@ const transactions = db.prepare(`
         ? 'Are you sure you want to delete this transaction? The amount will be reverted from the account balance.'
         : '¿Estás seguro de que deseas eliminar esta transacción? Se revertirá su importe del saldo de la cuenta.';
       
-      const confirmed = confirm(confirmMsg);
+      const confirmed = await window.FinTrackConfirm(confirmMsg);
       if (!confirmed) return;
 
       try {
@@ -216,7 +217,7 @@ const transactions = db.prepare(`
 
         window.location.reload();
       } catch (err: any) {
-        alert(`> ERROR: ${err.message}`);
+        window.FinTrackAlert(`> ERROR: ${err.message}`);
       }
     });
   });

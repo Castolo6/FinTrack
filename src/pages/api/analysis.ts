@@ -121,17 +121,19 @@ export const POST: APIRoute = async ({ request, locals, cookies }) => {
     if (type === 'situacion') {
       targetedInstructions = `Eres Moneypenny, asesora financiera personal certificada. Realiza un DIAGNÓSTICO FINANCIERO EJECUTIVO del estado actual del usuario.
 
-METODOLOGÍA DE ANÁLISIS:
-1. **Salud Patrimonial**: Calcula el patrimonio neto total (suma de todos los saldos). Evalúa si la distribución de capital entre cuentas es eficiente o si hay capital ocioso que debería estar generando rendimiento.
-2. **Pulso Presupuestario**: Estamos en el día ${currentDay} de ${daysInMonth} del mes (${monthProgress}% del mes transcurrido). Compara el porcentaje de presupuesto consumido vs el porcentaje del mes transcurrido para cada categoría. Si el gasto supera proporcionalmente el avance del mes, señálalo como zona de riesgo.
-3. **Ratio Ingreso/Gasto**: Calcula la relación entre ingresos y gastos del mes. Un ratio saludable es >1.3 (ahorrando al menos 30%). Indica el ratio real.
-4. **Colchón de Emergencia**: Evalúa si el usuario tiene liquidez suficiente para cubrir al menos 1 mes de gastos sin ingresos.
+REGLA DE ORO: DEBES redactar el análisis completo con números y conclusiones reales basadas en los datos provistos. NO generes una plantilla vacía, NO uses corchetes descriptivos como "[Indica el ratio]". ¡Haz el cálculo tú misma y escribe el resultado directamente!
+
+METODOLOGÍA DE ANÁLISIS (ejecuta esto y escribe tus conclusiones):
+1. **Salud Patrimonial**: Evalúa numéricamente el patrimonio neto total. Analiza si la distribución de capital entre cuentas es eficiente o si hay capital ocioso.
+2. **Pulso Presupuestario**: Estamos en el día ${currentDay} de ${daysInMonth} del mes (${monthProgress}% del mes transcurrido). Compara el porcentaje de presupuesto consumido vs el porcentaje del mes transcurrido para cada categoría. Nombra explícitamente qué categorías están en riesgo de sobregasto.
+3. **Ratio Ingreso/Gasto**: Calcula la división matemática de ingresos totales entre gastos totales del mes. Un ratio >1.3 es saludable. Escribe el número exacto calculado y evalúalo.
+4. **Colchón de Emergencia**: Evalúa si la liquidez en cuentas cubre al menos 1 mes del nivel actual de gastos.
 
 FORMATO DE RESPUESTA:
 - Usa encabezados Markdown (##) para cada sección.
-- Incluye cifras concretas en ${currency}, no generalidades.
-- Cierra con un VEREDICTO de 1 línea sobre la salud financiera general. Debes usar EXCLUSIVAMENTE uno de estos tres tokens para el estado: [VERDE: ESTABLE], [AMARILLO: EN RIESGO], o [ROJO: CRÍTICO].
-- NO repitas los saldos de cuentas ni los límites presupuestarios literalmente, el usuario ya los conoce.`;
+- Incluye cifras concretas y exactas en ${currency}, realizando tú misma los cálculos matemáticos.
+- Cierra con una sola línea titulada VEREDICTO FINAL. Elige y muestra ÚNICAMENTE UNO de estos tres estados (no imprimas los tres, solo el que corresponda al usuario): 🟢 ESTABLE, 🟡 EN RIESGO, o 🔴 CRÍTICO.
+- NO repitas los saldos en forma de lista, redacta un párrafo analítico para cada punto.`;
     } else if (type === 'fugas') {
       targetedInstructions = `Eres Moneypenny, auditora financiera forense especializada en detección de fugas de capital. Ejecuta una AUDITORÍA DE FUGAS Y GASTOS FANTASMA sobre las transacciones del mes.
 

@@ -12,8 +12,8 @@ const currency = Astro.cookies.get('currency')?.value || 'CLP';
 // Obtener usuario del middleware
 const user = Astro.locals.user;
 
-// 1. LIQUIDEZ (Dinero en cuentas)
-const liquidityResult = db.prepare('SELECT SUM(balance) as total FROM accounts').get() as { total: number | null };
+// 1. LIQUIDEZ (Dinero en cuentas, excluyendo tarjetas de crédito)
+const liquidityResult = db.prepare("SELECT SUM(balance) as total FROM accounts WHERE type != 'credit_card'").get() as { total: number | null };
 const liquidity = liquidityResult?.total || 0;
 
 // 2. INVERSIONES Y AHORROS
@@ -27,11 +27,15 @@ try {
   totalSavings = sav?.total || 0;
 } catch (e) {}
 
-// 3. DEUDAS
+// 3. DEUDAS (Créditos + Tarjetas de crédito)
 let totalDebt = 0;
 try {
   const debt = db.prepare('SELECT SUM(remaining_amount) as total FROM credits WHERE deleted_at IS NULL').get() as { total: number | null };
   totalDebt = debt?.total || 0;
+
+  // Sumar la deuda de las tarjetas de crédito (saldos negativos)
+  const ccDebt = db.prepare("SELECT SUM(ABS(balance)) as total FROM accounts WHERE type = 'credit_card' AND balance < 0").get() as { total: number | null };
+  totalDebt += (ccDebt?.total || 0);
 } catch (e) {}
 
 // 4. PATRIMONIO TOTAL
@@ -97,6 +101,7 @@ const accounts = db.prepare('SELECT * FROM accounts ORDER BY name ASC').all() as
   name: string;
   type: string;
   balance: number;
+  credit_limit: number;
   currency: string;
 }>;
 
@@ -226,7 +231,7 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
           <div class="border border-border-main bg-surface-main p-4">
             <div class="text-xs text-secondary uppercase">{t.net_worth || 'PATRIMONIO'}</div>
-            <div class="text-2xl font-bold text-main mt-2">{formatCLP(netWorth, currency)}</div>
+            <div class={`text-2xl font-bold mt-2 ${netWorth < 0 ? 'text-red-500' : 'text-main'}`}>{formatCLP(netWorth, currency)}</div>
           </div>
           <div class="border border-border-main bg-surface-main p-4">
             <div class="text-xs text-secondary uppercase">{t.liquidity || 'LIQUIDEZ'}</div>
@@ -278,7 +283,17 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
                            acc.type === 'other' ? t.option_other : acc.type}
                         </div>
                       </div>
-                      <div class="font-bold text-main">{formatCLP(acc.balance, currency)}</div>
+                      <div class="text-right">
+                        {acc.type === 'credit_card' ? (
+                          <>
+                            <div class="text-xs text-main">Cupo total: {formatCLP(acc.credit_limit || 0, currency)}</div>
+                            <div class="text-xs text-red-500">Usado: {formatCLP(Math.abs(acc.balance), currency)}</div>
+                            <div class="text-xs text-green-500">Disponible: {formatCLP((acc.credit_limit || 0) + acc.balance, currency)}</div>
+                          </>
+                        ) : (
+                          <div class="font-bold text-main">{formatCLP(acc.balance, currency)}</div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -304,6 +319,7 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
                         <th class="py-2 px-1">{t.table_date}</th>
                         <th class="py-2 px-1">{t.table_category}</th>
                         <th class="py-2 px-1 text-right">{t.table_amount}</th>
+                        <th class="py-2 px-1 text-center">Acción</th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-border-subtle">
@@ -316,6 +332,11 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
                           </td>
                           <td class={`py-2 px-1 text-right font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
                             {t.type === 'income' ? '+' : '-'}{formatCLP(t.amount, currency)}
+                          </td>
+                          <td class="py-2 px-1 text-center">
+                            <button class="delete-btn text-xs text-red-500 hover:text-red-300 font-bold underline cursor-pointer bg-transparent border-0" data-id={t.id}>
+                              [x]
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -429,8 +450,12 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
                   </select>
                 </div>
                 <div>
-                  <label class="block text-secondary mb-1">{t.label_acc_balance}</label>
+                  <label class="block text-secondary mb-1" id="label-acc-balance">{t.label_acc_balance}</label>
                   <input type="number" id="acc-balance" required step="0.01" value="0.00" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                </div>
+                <div id="acc-limit-container" class="hidden">
+                  <label class="block text-secondary mb-1">Cupo de Tarjeta (Límite Total)</label>
+                  <input type="number" id="acc-limit" step="0.01" value="0.00" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
                 </div>
                 <button type="submit" class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 transition-colors cursor-pointer">{t.btn_create_account}</button>
               </form>
@@ -501,7 +526,7 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
   const groupIncome = document.getElementById('group-income');
   const categorySelect = document.getElementById('tx-category') as HTMLSelectElement;
 
-  if (txTypeSelect && txCategorySelect) {
+  if (txTypeSelect && categorySelect) {
     txTypeSelect.addEventListener('change', (e) => {
       const type = (e.target as HTMLSelectElement).value;
       
@@ -529,12 +554,38 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
   }
 
   const accountForm = document.getElementById('account-form');
+  const accTypeSelect = document.getElementById('acc-type') as HTMLSelectElement;
+  const accLimitContainer = document.getElementById('acc-limit-container');
+  const labelAccBalance = document.getElementById('label-acc-balance');
+
+  if (accTypeSelect && accLimitContainer) {
+    accTypeSelect.addEventListener('change', (e) => {
+      if ((e.target as HTMLSelectElement).value === 'credit_card') {
+        accLimitContainer.classList.remove('hidden');
+        if (labelAccBalance) labelAccBalance.textContent = 'Deuda Actual (Ingresa lo que debes)';
+      } else {
+        accLimitContainer.classList.add('hidden');
+        if (labelAccBalance) labelAccBalance.textContent = 'Saldo Actual';
+      }
+    });
+  }
+
   if (accountForm) {
     accountForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const name = document.getElementById('acc-name').value;
-      const type = document.getElementById('acc-type').value;
-      const balance = parseFloat(document.getElementById('acc-balance').value || '0');
+      
+      const confirmed = await window.FinTrackConfirm('¿Confirmar creación de cuenta nueva?');
+      if (!confirmed) return;
+
+      const name = (document.getElementById('acc-name') as HTMLInputElement).value;
+      const type = (document.getElementById('acc-type') as HTMLSelectElement).value;
+      let balance = parseFloat((document.getElementById('acc-balance') as HTMLInputElement).value || '0');
+      const credit_limit = parseFloat((document.getElementById('acc-limit') as HTMLInputElement)?.value || '0');
+
+      // Si es tarjeta de crédito y ponen la deuda en positivo, la invertimos automáticamente
+      if (type === 'credit_card' && balance > 0) {
+        balance = -balance;
+      }
 
       const match = document.cookie.match(/currency=([^;]+)/);
       const currency = match ? match[1] : 'CLP';
@@ -543,12 +594,12 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
         const res = await fetch('/api/accounts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, type, balance, currency })
+          body: JSON.stringify({ name, type, balance, currency, credit_limit })
         });
         if (!res.ok) throw new Error('Error al crear la cuenta');
         window.location.reload();
       } catch (err) {
-        alert(err.message);
+        window.FinTrackAlert(err.message);
       }
     });
   }
@@ -557,12 +608,16 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
   if (txForm) {
     txForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const type = document.getElementById('tx-type').value;
-      const account_id = document.getElementById('tx-account').value;
-      const category_id = document.getElementById('tx-category').value;
-      const amount = parseFloat(document.getElementById('tx-amount').value);
-      const date = document.getElementById('tx-date').value;
-      const description = document.getElementById('tx-desc').value;
+      
+      const confirmed = await window.FinTrackConfirm('¿Confirmar registro de transacción?');
+      if (!confirmed) return;
+
+      const type = (document.getElementById('tx-type') as HTMLSelectElement).value;
+      const account_id = (document.getElementById('tx-account') as HTMLSelectElement).value;
+      const category_id = (document.getElementById('tx-category') as HTMLSelectElement).value;
+      const amount = parseFloat((document.getElementById('tx-amount') as HTMLInputElement).value);
+      const date = (document.getElementById('tx-date') as HTMLInputElement).value;
+      const description = (document.getElementById('tx-desc') as HTMLInputElement).value;
 
       try {
         const res = await fetch('/api/transactions', {
@@ -570,12 +625,43 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type, account_id, category_id, amount, date, description })
         });
-        if (!res.ok) throw new Error('Error al registrar la transacción');
+        if (!res.ok) {
+           const errData = await res.json();
+           throw new Error(errData.error || 'Error al registrar la transacción');
+        }
         window.location.reload();
-      } catch (err) {
-        alert(err.message);
+      } catch (err: any) {
+        window.FinTrackAlert(err.message);
       }
     });
   }
+
+  // Lógica para botones de eliminar en el Dashboard
+  const deleteButtons = document.querySelectorAll('.delete-btn');
+  deleteButtons.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const target = e.target as HTMLButtonElement;
+      const id = target.getAttribute('data-id');
+      if (!id) return;
+
+      const confirmed = await window.FinTrackConfirm('¿Eliminar esta transacción? Se enviará a la papelera y el dinero volverá a tu cuenta.');
+      if (!confirmed) return;
+
+      try {
+        const response = await fetch(`/api/transactions/${id}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Error al eliminar');
+        }
+        window.location.reload();
+      } catch (err: any) {
+        window.FinTrackAlert(`> ERROR: ${err.message}`);
+      }
+    });
+  });
+
   });
 </script>

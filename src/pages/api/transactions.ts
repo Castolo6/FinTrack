@@ -19,8 +19,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     // Validar que la cuenta existe y obtener su tipo y saldo
-    const account = db.prepare('SELECT id, type as account_type, balance FROM accounts WHERE id = ?')
-      .get(account_id) as { id: string; account_type: string; balance: number } | undefined;
+    const account = db.prepare('SELECT id, type as account_type, balance, credit_limit FROM accounts WHERE id = ?')
+      .get(account_id) as { id: string; account_type: string; balance: number; credit_limit: number } | undefined;
 
     if (!account) {
       return new Response(
@@ -29,13 +29,23 @@ export const POST: APIRoute = async ({ request, locals }) => {
       );
     }
 
-    // Validar saldo suficiente para gastos, asignaciones y transferencias (excepto tarjetas de crédito)
-    if (['expense', 'allocation', 'transfer'].includes(type) && account.account_type !== 'credit_card') {
-      if (account.balance < amount) {
-        return new Response(
-          JSON.stringify({ error: `Saldo insuficiente en la cuenta. Disponible: ${account.balance}, requerido: ${amount}.` }),
-          { status: 400 }
-        );
+    // Validar saldo suficiente o cupo para gastos, asignaciones y transferencias
+    if (['expense', 'allocation', 'transfer'].includes(type)) {
+      if (account.account_type === 'credit_card') {
+        const available = (account.credit_limit || 0) + account.balance;
+        if (available < amount) {
+          return new Response(
+            JSON.stringify({ error: `Cupo insuficiente en la tarjeta. Disponible: ${available}, requerido: ${amount}.` }),
+            { status: 400 }
+          );
+        }
+      } else {
+        if (account.balance < amount) {
+          return new Response(
+            JSON.stringify({ error: `Saldo insuficiente en la cuenta. Disponible: ${account.balance}, requerido: ${amount}.` }),
+            { status: 400 }
+          );
+        }
       }
     }
 

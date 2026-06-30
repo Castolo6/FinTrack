@@ -156,6 +156,31 @@ const allExpenseCategories = db.prepare(`
               </form>
             </div>
           </div>
+
+          <!-- Formulario Crear Categoría -->
+          <div class="terminal-window m-0 mt-6">
+            <div class="terminal-header border-accent/50 text-accent">
+              <span>./create_category.sh</span>
+            </div>
+            <div class="terminal-body text-xs space-y-3">
+              <form id="category-form" class="space-y-3">
+                <div>
+                  <label class="block text-secondary mb-1">{lang === 'es' ? 'NOMBRE CATEGORÍA' : 'CATEGORY NAME'}</label>
+                  <input type="text" id="cat-name" required placeholder="ej: Mascotas" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                </div>
+                <div class="relative">
+                  <label class="block text-secondary mb-1">{lang === 'es' ? 'ICONO (EMOJI)' : 'ICON (EMOJI)'}</label>
+                  <input type="text" id="cat-icon" required readonly placeholder="Haz clic para elegir -> 🐶" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent cursor-pointer" />
+                  <div id="emoji-picker-container" class="mt-2 hidden w-full flex justify-center">
+                    <emoji-picker class="dark"></emoji-picker>
+                  </div>
+                </div>
+                <button type="submit" class="w-full bg-accent hover:bg-accent/80 text-bg font-bold py-2 transition-colors cursor-pointer uppercase">
+                  {lang === 'es' ? 'CREAR CATEGORÍA' : 'CREATE CATEGORY'}
+                </button>
+              </form>
+            </div>
+          </div>
         </aside>
 
       </div>
@@ -165,11 +190,18 @@ const allExpenseCategories = db.prepare(`
 </Layout>
 
 <script>
+  import 'emoji-picker-element';
+  import es from 'emoji-picker-element/i18n/es';
+
   document.addEventListener('astro:page-load', () => {
 const form = document.getElementById('budget-form');
 
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    
+    const confirmed = await window.FinTrackConfirm('¿Confirmar establecimiento de presupuesto?');
+    if (!confirmed) return;
+
     const category_id = (document.getElementById('budget-category') as HTMLSelectElement).value;
     const amount = parseFloat((document.getElementById('budget-amount') as HTMLInputElement).value);
 
@@ -187,7 +219,60 @@ const form = document.getElementById('budget-form');
 
       window.location.reload();
     } catch (err: any) {
-      alert(`> ERROR: ${err.message}`);
+      window.FinTrackAlert(`> ERROR: ${err.message}`);
+    }
+  });
+
+  const catForm = document.getElementById('category-form');
+  const catIconInput = document.getElementById('cat-icon') as HTMLInputElement;
+  const emojiContainer = document.getElementById('emoji-picker-container');
+  const picker = document.querySelector('emoji-picker') as any;
+
+  // Emoji picker logic
+  if (catIconInput && emojiContainer && picker) {
+    picker.i18n = es;
+
+    catIconInput.addEventListener('click', (e) => {
+      e.stopPropagation();
+      emojiContainer.classList.toggle('hidden');
+    });
+
+    picker.addEventListener('emoji-click', (e: any) => {
+      catIconInput.value = e.detail.unicode;
+      emojiContainer.classList.add('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!emojiContainer.contains(e.target as Node) && e.target !== catIconInput) {
+        emojiContainer.classList.add('hidden');
+      }
+    });
+  }
+
+  catForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const confirmed = await window.FinTrackConfirm('¿Confirmar creación de categoría?');
+    if (!confirmed) return;
+
+    const name = (document.getElementById('cat-name') as HTMLInputElement).value;
+    const icon = (document.getElementById('cat-icon') as HTMLInputElement).value;
+
+    try {
+      const response = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, icon, type: 'expense', color: '#ef4444' })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error al crear la categoría.');
+      }
+
+      window.location.reload();
+    } catch (err: any) {
+      window.FinTrackAlert(`> ERROR: ${err.message}`);
     }
   });
   });

@@ -283,6 +283,10 @@ const goals = goalsList.map(g => {
   const goalForm = document.getElementById('goal-form');
   goalForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    
+    const confirmed = await window.FinTrackConfirm(isEn ? 'Confirm goal creation?' : '¿Confirmar creación de objetivo?');
+    if (!confirmed) return;
+
     const name = (document.getElementById('goal-name') as HTMLInputElement).value;
     const target_amount = parseFloat((document.getElementById('goal-target') as HTMLInputElement).value);
     const current_amount = parseFloat((document.getElementById('goal-current') as HTMLInputElement).value || '0');
@@ -293,7 +297,7 @@ const goals = goalsList.map(g => {
     const isEn = document.cookie.includes('lang=en');
 
     if (current_amount > 0 && !account_id) {
-      alert(isEn ? '> ERROR: Select a source account for the initial amount.' : '> ERROR: Selecciona una cuenta de origen para el monto inicial.');
+      window.FinTrackAlert(isEn ? '> ERROR: Select a source account for the initial amount.' : '> ERROR: Selecciona una cuenta de origen para el monto inicial.');
       return;
     }
 
@@ -311,7 +315,7 @@ const goals = goalsList.map(g => {
 
       window.location.reload();
     } catch (err: any) {
-      alert(`> ERROR: ${err.message}`);
+      window.FinTrackAlert(`> ERROR: ${err.message}`);
     }
   });
 
@@ -368,7 +372,7 @@ const goals = goalsList.map(g => {
       const amount = parseFloat(amountInput.value);
 
       if (isNaN(amount) || amount <= 0) {
-        alert(isEn ? '> ERROR: Enter a valid deposit amount.' : '> ERROR: Ingresa un monto de depósito válido.');
+        window.FinTrackAlert(isEn ? '> ERROR: Enter a valid deposit amount.' : '> ERROR: Ingresa un monto de depósito válido.');
         return;
       }
 
@@ -409,7 +413,7 @@ const goals = goalsList.map(g => {
 
           window.location.reload();
         } catch (err: any) {
-          alert(`> ERROR: ${err.message}`);
+          window.FinTrackAlert(`> ERROR: ${err.message}`);
         }
       });
     });
@@ -428,7 +432,7 @@ const goals = goalsList.map(g => {
       const amount = parseFloat(amountInput.value);
 
       if (isNaN(amount) || amount <= 0) {
-        alert(isEn ? '> ERROR: Enter a valid withdrawal amount.' : '> ERROR: Ingresa un monto de retiro válido.');
+        window.FinTrackAlert(isEn ? '> ERROR: Enter a valid withdrawal amount.' : '> ERROR: Ingresa un monto de retiro válido.');
         return;
       }
 
@@ -440,7 +444,7 @@ const goals = goalsList.map(g => {
       const reason = reasonInput.value.trim();
 
       if (!reason) {
-        alert(isEn ? '> ERROR: You must enter a reason or description for withdrawal.' : '> ERROR: Debes ingresar el motivo o descripción del retiro.');
+        window.FinTrackAlert(isEn ? '> ERROR: You must enter a reason or description for withdrawal.' : '> ERROR: Debes ingresar el motivo o descripción del retiro.');
         return;
       }
 
@@ -477,7 +481,7 @@ const goals = goalsList.map(g => {
 
           window.location.reload();
         } catch (err: any) {
-          alert(`> ERROR: ${err.message}`);
+          window.FinTrackAlert(`> ERROR: ${err.message}`);
         }
       });
     });
@@ -512,7 +516,7 @@ const goals = goalsList.map(g => {
 
           window.location.reload();
         } catch (err: any) {
-          alert(`> ERROR: ${err.message}`);
+          window.FinTrackAlert(`> ERROR: ${err.message}`);
         }
       });
     });

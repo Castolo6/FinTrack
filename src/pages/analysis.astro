@@ -181,75 +181,65 @@ Close with STRATEGIC RECOMMENDATION: priority order and whether to pause any goa
       </details>
 
       <!-- Actions & Terminal Output Window -->
-      <div class="space-y-4">
-        <!-- 4 Botones de Acción Independientes -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-          <button 
-            data-type="situacion" 
-            id="btn-situacion"
-            class={`analysis-trigger border border-border-main font-bold py-2 px-3 transition-colors cursor-pointer text-xs uppercase ${defaultTab === 'situacion' ? 'bg-border-main text-bg' : 'bg-bg-subtle text-main hover:bg-border-main hover:text-bg'}`}
-          >
-            {lang === 'es' ? '[ 01_AUDITAR_SITUACION ]' : '[ 01_AUDIT_SITUATION ]'}
-          </button>
-          <button 
-            data-type="fugas" 
-            id="btn-fugas"
-            class={`analysis-trigger border border-border-main font-bold py-2 px-3 transition-colors cursor-pointer text-xs uppercase ${defaultTab === 'fugas' ? 'bg-border-main text-bg' : 'bg-bg-subtle text-main hover:bg-border-main hover:text-bg'}`}
-          >
-            {lang === 'es' ? '[ 02_AUDITAR_FUGAS ]' : '[ 02_AUDIT_LEAKAGES ]'}
-          </button>
-          <button 
-            data-type="mejoras" 
-            id="btn-mejoras"
-            class={`analysis-trigger border border-border-main font-bold py-2 px-3 transition-colors cursor-pointer text-xs uppercase ${defaultTab === 'mejoras' ? 'bg-border-main text-bg' : 'bg-bg-subtle text-main hover:bg-border-main hover:text-bg'}`}
-          >
-            {lang === 'es' ? '[ 03_PLANES_MEJORA ]' : '[ 03_IMPROVEMENT_PLANS ]'}
-          </button>
-          <button 
-            data-type="objetivos" 
-            id="btn-objetivos"
-            class={`analysis-trigger border border-border-main font-bold py-2 px-3 transition-colors cursor-pointer text-xs uppercase ${defaultTab === 'objetivos' ? 'bg-border-main text-bg' : 'bg-bg-subtle text-main hover:bg-border-main hover:text-bg'}`}
-          >
-            {lang === 'es' ? '[ 04_VIABILIDAD_OBJETIVOS ]' : '[ 04_GOALS_VIABILITY ]'}
-          </button>
-        </div>
-
-        <div class="flex flex-wrap justify-between items-center gap-2 text-xs">
-          <div class="text-secondary font-bold select-none">> moneypenny --mode=interactive</div>
-          
-          <div class="flex items-center gap-2">
-            <!-- Botón para forzar una nueva generación -->
-            <button 
-              id="refresh-analysis-btn" 
-              class={`${defaultContent ? 'block' : 'hidden'} bg-bg border border-accent text-accent hover:bg-accent hover:text-bg font-bold py-1 px-2 transition-colors cursor-pointer uppercase text-[10px]`}
-            >
-              {t.btn_regenerate}
-            </button>
-            
-            <div id="status-badge" class="text-[10px] text-muted-text uppercase font-bold border border-border-subtle px-2 py-1 bg-bg-subtle">
-              {defaultFormattedTime ? `CACHED (${defaultFormattedTime})` : 'STATUS: READY'}
-            </div>
-          </div>
-        </div>
-
-        <!-- Terminal Output Window -->
-        <div class="terminal-window m-0">
+      <div class="flex flex-col h-[700px] border border-border-main bg-surface-main">
+        
+        <!-- Terminal Output Window (Chat History) -->
+        <div class="terminal-window m-0 flex-1 flex flex-col min-h-0 border-0 border-b border-border-main">
           <div class="terminal-header">
-            <span>moneypenny@fintrack — stdout — bash 80x24</span>
-            <div class="terminal-buttons">
-              <span class="terminal-button"></span>
-              <span class="terminal-button"></span>
-              <span class="terminal-button"></span>
-            </div>
+            <span>moneypenny@fintrack — chat — bash 80x24</span>
           </div>
-          <div class="terminal-body bg-bg text-main font-mono text-xs md:text-sm min-h-[350px] max-h-[650px] overflow-y-auto p-4 border border-t-0 border-border-subtle" id="terminal-stdout-container">
-            <!-- Terminal output body content -->
-            <div class="whitespace-pre-wrap markdown-body max-w-none" id="terminal-stdout" set:html={defaultContentHtml || (lang === 'es' ? '&gt; Selecciona una de las auditorías de Moneypenny en los botones superiores para ejecutar su prompt correspondiente sobre los datos de la base de datos local.' : '&gt; Select one of the Moneypenny audits on the top buttons to execute its corresponding prompt on the local database.')}>
+          <div class="terminal-body bg-bg text-main font-mono text-xs md:text-sm flex-1 overflow-y-auto p-4" id="terminal-stdout-container">
+            <div id="chat-history" class="space-y-6">
+              <div class="markdown-body max-w-none text-accent border border-accent/20 bg-accent/5 p-3">
+                <strong>> MONEYPENNY OS v2.0</strong><br/>
+                {lang === 'es' 
+                  ? '> Conexión establecida. ¿En qué te puedo asesorar hoy? Elige una auditoría rápida o hazme una pregunta directa.'
+                  : '> Connection established. How can I advise you today? Choose a quick audit or ask me a direct question.'}
+              </div>
             </div>
+            <div id="loading-indicator" class="hidden mt-6 text-accent animate-pulse font-bold"></div>
           </div>
+        </div>
+
+        <!-- Chat Input & Quick Actions Area -->
+        <div class="p-3 bg-surface-main shrink-0">
+          <!-- Quick Actions (chips) -->
+          <div class="flex flex-wrap gap-2 mb-3">
+            <button data-type="situacion" class="analysis-trigger text-[10px] uppercase border border-border-main px-2 py-1 bg-bg-subtle text-main hover:bg-border-main hover:text-bg transition-colors cursor-pointer">
+              {lang === 'es' ? '[ AUDITAR SITUACIÓN ]' : '[ AUDIT SITUATION ]'}
+            </button>
+            <button data-type="fugas" class="analysis-trigger text-[10px] uppercase border border-border-main px-2 py-1 bg-bg-subtle text-main hover:bg-border-main hover:text-bg transition-colors cursor-pointer">
+              {lang === 'es' ? '[ DETECTAR FUGAS ]' : '[ DETECT LEAKAGES ]'}
+            </button>
+            <button data-type="mejoras" class="analysis-trigger text-[10px] uppercase border border-border-main px-2 py-1 bg-bg-subtle text-main hover:bg-border-main hover:text-bg transition-colors cursor-pointer">
+              {lang === 'es' ? '[ PLAN DE MEJORAS ]' : '[ IMPROVEMENT PLAN ]'}
+            </button>
+            <button data-type="objetivos" class="analysis-trigger text-[10px] uppercase border border-border-main px-2 py-1 bg-bg-subtle text-main hover:bg-border-main hover:text-bg transition-colors cursor-pointer">
+              {lang === 'es' ? '[ VIABILIDAD OBJETIVOS ]' : '[ GOALS VIABILITY ]'}
+            </button>
+          </div>
+
+          <!-- Input Form -->
+          <form id="chat-form" class="flex items-center gap-2">
+            <span class="text-accent font-bold">$></span>
+            <input 
+              type="text" 
+              id="chat-input" 
+              placeholder={lang === 'es' ? 'Hazle una pregunta abierta a Moneypenny...' : 'Ask Moneypenny an open question...'}
+              class="flex-1 bg-transparent border-none outline-none text-main text-xs md:text-sm font-mono placeholder-muted-text"
+              autocomplete="off"
+              required
+            />
+            <button 
+              type="submit" 
+              id="chat-submit"
+              class="bg-accent text-bg hover:bg-accent/80 font-bold px-4 py-1 transition-colors text-xs uppercase cursor-pointer"
+            >
+              {lang === 'es' ? 'ENVIAR' : 'SEND'}
+            </button>
+          </form>
         </div>
       </div>
-      
     </main>
   </div>
 </Layout>
@@ -260,229 +250,127 @@ Close with STRATEGIC RECOMMENDATION: priority order and whether to pause any goa
   import { marked } from 'marked';
 
   document.addEventListener('astro:page-load', () => {
-    const dataEl = document.getElementById('analysis-data');
-    if (!dataEl) return;
-    const savedAnalyses = JSON.parse(dataEl.getAttribute('data-analyses'));
+    const triggerButtons = document.querySelectorAll('.analysis-trigger');
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input') as HTMLInputElement;
+    const chatSubmit = document.getElementById('chat-submit') as HTMLButtonElement;
+    const chatHistory = document.getElementById('chat-history');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const terminalStdoutContainer = document.getElementById('terminal-stdout-container');
 
-    const statusBadge = document.getElementById('status-badge');
-  const terminalStdout = document.getElementById('terminal-stdout');
-  const terminalStdoutContainer = document.getElementById('terminal-stdout-container');
-  const triggerButtons = document.querySelectorAll('.analysis-trigger');
-  const refreshBtn = document.getElementById('refresh-analysis-btn');
+    let isProcessing = false;
 
-  let currentAnimationId = null;
-  let activeType = null;
-  let loadingIntervalId = null;
-
-  const isEn = document.cookie.includes('lang=en');
-
-  // Cargar datos cacheados
-  const cachedAnalyses = {};
-  savedAnalyses.forEach(item => {
-    cachedAnalyses[item.type] = {
-      content: item.content,
-      updated_at: item.updated_at
-    };
-  });
-
-  function formatTimestamp(ts) {
-    const d = new Date(ts);
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const hours = String(d.getHours()).padStart(2, '0');
-    const minutes = String(d.getMinutes()).padStart(2, '0');
-    return `${day}/${month} ${hours}:${minutes}`;
-  }
-
-  // Resalta visualmente el botón del tipo de análisis activo
-  function highlightButton(type) {
-    triggerButtons.forEach(btn => {
-      const btnType = btn.getAttribute('data-type');
-      if (btnType === type) {
-        btn.classList.remove('bg-bg-subtle', 'text-main');
-        btn.classList.add('bg-border-main', 'text-bg');
-      } else {
-        btn.classList.remove('bg-border-main', 'text-bg');
-        btn.classList.add('bg-bg-subtle', 'text-main');
-      }
-    });
-  }
-
-  // Muestra un análisis (ya sea de caché o nuevo)
-  function formatTokens(text) {
-    if (!text) return '';
-    return text
-      .replace(/\[VERDE:\s*([^\]]+)\]/gi, '<span class="text-green-500 font-bold">🟢 $1</span>')
-      .replace(/\[AMARILLO:\s*([^\]]+)\]/gi, '<span class="text-yellow-500 font-bold">🟡 $1</span>')
-      .replace(/\[ROJO:\s*([^\]]+)\]/gi, '<span class="text-red-500 font-bold">🔴 $1</span>');
-  }
-
-  function showAnalysis(type, content, isNew = false, timestamp = null) {
-    activeType = type;
-    highlightButton(type);
-
-    // Cancelar animación anterior si existe
-    if (currentAnimationId !== null) {
-      cancelAnimationFrame(currentAnimationId);
-      currentAnimationId = null;
-    }
-    if (loadingIntervalId !== null) {
-      clearInterval(loadingIntervalId);
-      loadingIntervalId = null;
+    function formatTokens(text) {
+      if (!text) return '';
+      return text
+        .replace(/\[VERDE:\s*([^\]]+)\]/gi, '<span class="text-green-500 font-bold">🟢 $1</span>')
+        .replace(/\[AMARILLO:\s*([^\]]+)\]/gi, '<span class="text-yellow-500 font-bold">🟡 $1</span>')
+        .replace(/\[ROJO:\s*([^\]]+)\]/gi, '<span class="text-red-500 font-bold">🔴 $1</span>');
     }
 
-    if (refreshBtn) refreshBtn.classList.remove('hidden');
-
-    const formattedTime = timestamp ? formatTimestamp(timestamp) : formatTimestamp(Date.now());
-    if (statusBadge) {
-      statusBadge.textContent = isNew ? `STATUS: FRESH` : `CACHED (${formattedTime})`;
-    }
-
-    if (!terminalStdout) return;
-
-    if (isNew) {
-      // Efecto typewriter para nuevos reportes con renderizado dinámico de markdown
-      terminalStdout.innerHTML = '';
-      let index = 0;
-      const charsPerTick = 15;
-      
-      function typeWriter() {
-        if (index < content.length) {
-          index += charsPerTick;
-          if (index > content.length) index = content.length;
-          
-          terminalStdout.innerHTML = marked.parse(formatTokens(content.substr(0, index)));
-          
-          if (terminalStdoutContainer) {
-            terminalStdoutContainer.scrollTop = terminalStdoutContainer.scrollHeight;
-          }
-          currentAnimationId = requestAnimationFrame(typeWriter);
-        } else {
-          currentAnimationId = null;
-        }
-      }
-      typeWriter();
-    } else {
-      // Render instantáneo para caché con markdown
-      terminalStdout.innerHTML = marked.parse(formatTokens(content));
+    function scrollToBottom() {
       if (terminalStdoutContainer) {
-        terminalStdoutContainer.scrollTop = 0;
+        setTimeout(() => {
+          terminalStdoutContainer.scrollTop = terminalStdoutContainer.scrollHeight;
+        }, 50);
       }
     }
-  }
 
-  // Ejecuta la consulta de IA en vivo
-  async function runQuery(type) {
-    const clickedBtn = document.getElementById(`btn-${type}`);
-    const originalLabel = clickedBtn ? clickedBtn.textContent : '';
-
-    // Detener animaciones activas
-    if (currentAnimationId !== null) {
-      cancelAnimationFrame(currentAnimationId);
-      currentAnimationId = null;
+    function appendMessage(role, text) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'mt-6 border-t border-border-subtle pt-4';
+      if (role === 'user') {
+        msgDiv.innerHTML = `<div class="text-accent font-bold">> [ USUARIO ]</div><div class="mt-1">${text}</div>`;
+      } else if (role === 'system') {
+        msgDiv.innerHTML = `<div class="text-main font-bold">> [ MONEYPENNY ]</div><div class="mt-2 markdown-body max-w-none text-sm">${marked.parse(formatTokens(text))}</div>`;
+      } else if (role === 'error') {
+        msgDiv.innerHTML = `<div class="text-red-500 font-bold">> [ FALLO CRÍTICO ]</div><div class="mt-1 text-red-500">${text}</div>`;
+      }
+      chatHistory?.appendChild(msgDiv);
+      scrollToBottom();
     }
 
-    // Deshabilitar botones durante la consulta
-    triggerButtons.forEach(btn => {
-      btn.disabled = true;
-      btn.classList.add('opacity-40', 'cursor-not-allowed');
-    });
-    if (clickedBtn) clickedBtn.textContent = isEn ? '[ PROCESSING... ]' : '[ PROCESANDO... ]';
-    if (refreshBtn) refreshBtn.classList.add('hidden');
-
-    if (statusBadge) statusBadge.textContent = `STATUS: AUDITING_${type.toUpperCase()}`;
-
-    const labels = isEn ? {
-      situacion: 'GENERAL STATUS',
-      fugas: 'MONEY LEAKAGE DETECTION',
-      mejoras: 'IMPROVEMENT PLAN & EFFICIENCY',
-      objetivos: 'GOALS VIABILITY & PROGRESS'
-    } : {
-      situacion: 'ESTATUS GENERAL',
-      fugas: 'DETECCIÓN DE FUGAS DE DINERO',
-      mejoras: 'PLAN DE MEJORA Y EFICIENCIA',
-      objetivos: 'VIABILIDAD Y AVANCE DE OBJETIVOS'
-    };
-
-    if (terminalStdout) {
-      let progress = 0;
-      const barWidth = 40;
-      loadingIntervalId = setInterval(() => {
-        progress = (progress + 1) % (barWidth + 1);
-        const bar = '[' + '='.repeat(progress) + '-'.repeat(barWidth - progress) + ']';
-        terminalStdout.innerHTML = isEn
-          ? `> Starting prompt for: ${labels[type]}...\n> Querying balances and transactions...\n> ${bar} RUNNING PROMPT...`
-          : `> Iniciando prompt para: ${labels[type]}...\n> Consultando balances y transacciones...\n> ${bar} EJECUTANDO PROMPT...`;
-      }, 100);
+    function showLoading() {
+      loadingIndicator?.classList.remove('hidden');
+      if (loadingIndicator) loadingIndicator.innerHTML = '> Procesando análisis neuronal...';
+      scrollToBottom();
     }
 
-    try {
-      const response = await fetch('/api/analysis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type })
-      });
+    function hideLoading() {
+      loadingIndicator?.classList.add('hidden');
+    }
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || (isEn ? 'Unknown error invoking local Moneypenny agent.' : 'Error desconocido al invocar al agente Moneypenny.'));
+    async function handleRequest(endpoint, bodyParams, userPromptDisplay) {
+      if (isProcessing) return;
+      isProcessing = true;
+      if (chatInput) chatInput.disabled = true;
+      if (chatSubmit) {
+        chatSubmit.disabled = true;
+        chatSubmit.classList.add('opacity-50', 'cursor-not-allowed');
       }
 
-      // Guardar en la caché en memoria del cliente
-      cachedAnalyses[type] = {
-        content: data.analysis,
-        updated_at: Date.now()
-      };
-
-      // Mostrar con animación typewriter
-      showAnalysis(type, data.analysis, true, Date.now());
-
-    } catch (err) {
-      if (statusBadge) statusBadge.textContent = 'STATUS: ERROR';
-      if (terminalStdout) {
-        terminalStdout.innerHTML = isEn
-          ? `\n> CRITICAL ERROR: ${err.message}\n> Make sure the Moneypenny Agent API is running on port 8000 with Ollama's "gemma2:2b" model available.`
-          : `\n> ERROR CRÍTICO: ${err.message}\n> Asegúrate de que la API de Moneypenny esté corriendo en el puerto 8000 con el modelo "gemma2:2b" disponible en Ollama.`;
-      }
-    } finally {
-      if (loadingIntervalId !== null) {
-        clearInterval(loadingIntervalId);
-        loadingIntervalId = null;
-      }
-      // Rehabilitar botones
       triggerButtons.forEach(btn => {
-        btn.disabled = false;
-        btn.classList.remove('opacity-40', 'cursor-not-allowed');
+        (btn as HTMLButtonElement).disabled = true;
+        btn.classList.add('opacity-40', 'cursor-not-allowed');
       });
-      if (clickedBtn) clickedBtn.textContent = originalLabel;
-    }
-  }
 
-  // Enlazar botones principales
-  triggerButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const type = btn.getAttribute('data-type');
-      if (!type) return;
+      appendMessage('user', userPromptDisplay);
+      showLoading();
 
-      // Si ya está cacheado, mostrar al instante
-      if (cachedAnalyses[type]) {
-        showAnalysis(type, cachedAnalyses[type].content, false, cachedAnalyses[type].updated_at);
-      } else {
-        // Si no está cacheado, correr la consulta IA
-        runQuery(type);
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyParams)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Error desconocido del agente.');
+        }
+
+        const replyContent = data.analysis || data.reply;
+        appendMessage('system', replyContent);
+
+      } catch (err: any) {
+        appendMessage('error', err.message);
+      } finally {
+        hideLoading();
+        isProcessing = false;
+        if (chatInput) chatInput.disabled = false;
+        if (chatSubmit) {
+          chatSubmit.disabled = false;
+          chatSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+        
+        triggerButtons.forEach(btn => {
+          (btn as HTMLButtonElement).disabled = false;
+          btn.classList.remove('opacity-40', 'cursor-not-allowed');
+        });
+        if (chatInput) chatInput.focus();
       }
-    });
-  });
-
-  // Enlazar botón Regenerar reporte
-  refreshBtn?.addEventListener('click', () => {
-    if (activeType) {
-      runQuery(activeType);
     }
-  });
 
-  // El estado inicial ahora es renderizado desde el servidor en Astro.
-  activeType = document.querySelector('.analysis-trigger.bg-border-main')?.getAttribute('data-type') || null;
+    // Bind chips
+    triggerButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const type = btn.getAttribute('data-type');
+        let label = btn.textContent?.trim().replace(/\[/g, '').replace(/\]/g, '').trim() || type;
+        handleRequest('/api/analysis', { type }, `Ejecutando auditoría: ${label}`);
+      });
+    });
+
+    // Bind chat form
+    chatForm?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!chatInput) return;
+      const message = chatInput.value.trim();
+      if (!message) return;
+      
+      chatInput.value = '';
+      handleRequest('/api/chat', { message }, message);
+    });
+
   });
 </script>

@@ -616,6 +616,10 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
     // ── SAVINGS: Crear Bolsillo ──
     document.getElementById('goal-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      
+      const confirmed = await window.FinTrackConfirm(isEn ? 'Confirm goal creation?' : '¿Confirmar creación de objetivo?');
+      if (!confirmed) return;
+
       const name = (document.getElementById('goal-name') as HTMLInputElement).value;
       const target_amount = parseFloat((document.getElementById('goal-target') as HTMLInputElement).value);
       const current_amount = parseFloat((document.getElementById('goal-current') as HTMLInputElement).value || '0');
@@ -624,7 +628,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
       const deadline = (document.getElementById('goal-deadline') as HTMLInputElement).value;
 
       if (current_amount > 0 && !account_id) {
-        alert(isEn ? '> ERROR: Select a source account for the initial amount.' : '> ERROR: Selecciona una cuenta de origen para el monto inicial.');
+        window.FinTrackAlert(isEn ? '> ERROR: Select a source account for the initial amount.' : '> ERROR: Selecciona una cuenta de origen para el monto inicial.');
         return;
       }
 
@@ -635,7 +639,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
             body: JSON.stringify({ name, target_amount, current_amount, saving_platform, account_id, deadline }) });
           if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
           window.location.reload();
-        } catch (err: any) { alert(`> ERROR: ${err.message}`); }
+        } catch (err: any) { window.FinTrackAlert(`> ERROR: ${err.message}`); }
       });
     });
 
@@ -645,7 +649,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
         const id = (e.target as HTMLElement).getAttribute('data-id');
         if (!id) return;
         const amount = parseFloat((document.getElementById(`amount-${id}`) as HTMLInputElement).value);
-        if (isNaN(amount) || amount <= 0) { alert(isEn ? '> ERROR: Enter a valid amount.' : '> ERROR: Ingresa un monto válido.'); return; }
+        if (isNaN(amount) || amount <= 0) { window.FinTrackAlert(isEn ? '> ERROR: Enter a valid amount.' : '> ERROR: Ingresa un monto válido.'); return; }
         const accountSelect = document.getElementById(`account-${id}`) as HTMLSelectElement;
         const account_id = accountSelect.value;
         const msg = isEn ? `Deposit ${amount} into this pocket?` : `¿Depositar ${amount} en este bolsillo?`;
@@ -655,7 +659,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
               body: JSON.stringify({ id, amount, action: 'deposit', account_id }) });
             if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
             window.location.reload();
-          } catch (err: any) { alert(`> ERROR: ${err.message}`); }
+          } catch (err: any) { window.FinTrackAlert(`> ERROR: ${err.message}`); }
         });
       });
     });
@@ -666,9 +670,9 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
         const id = (e.target as HTMLElement).getAttribute('data-id');
         if (!id) return;
         const amount = parseFloat((document.getElementById(`amount-${id}`) as HTMLInputElement).value);
-        if (isNaN(amount) || amount <= 0) { alert(isEn ? '> ERROR: Enter a valid amount.' : '> ERROR: Ingresa un monto válido.'); return; }
+        if (isNaN(amount) || amount <= 0) { window.FinTrackAlert(isEn ? '> ERROR: Enter a valid amount.' : '> ERROR: Ingresa un monto válido.'); return; }
         const reason = (document.getElementById(`reason-${id}`) as HTMLInputElement).value.trim();
-        if (!reason) { alert(isEn ? '> ERROR: Enter a reason for withdrawal.' : '> ERROR: Ingresa un motivo para el retiro.'); return; }
+        if (!reason) { window.FinTrackAlert(isEn ? '> ERROR: Enter a reason for withdrawal.' : '> ERROR: Ingresa un motivo para el retiro.'); return; }
         const accountSelect = document.getElementById(`account-${id}`) as HTMLSelectElement;
         const account_id = accountSelect.value;
         const msg = isEn ? `Withdraw ${amount} from this pocket?` : `¿Retirar ${amount} de este bolsillo?`;
@@ -678,7 +682,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
               body: JSON.stringify({ id, amount, action: 'withdraw', account_id, reason }) });
             if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
             window.location.reload();
-          } catch (err: any) { alert(`> ERROR: ${err.message}`); }
+          } catch (err: any) { window.FinTrackAlert(`> ERROR: ${err.message}`); }
         });
       });
     });
@@ -694,7 +698,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
             const res = await fetch(`/api/goals/${id}`, { method: 'DELETE' });
             if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
             window.location.reload();
-          } catch (err: any) { alert(`> ERROR: ${err.message}`); }
+          } catch (err: any) { window.FinTrackAlert(`> ERROR: ${err.message}`); }
         });
       });
     });
@@ -702,6 +706,10 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
     // ── INVERSIONES: Crear ──
     document.getElementById('investment-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      
+      const confirmed = await window.FinTrackConfirm(isEn ? 'Confirm investment creation?' : '¿Confirmar registro de inversión?');
+      if (!confirmed) return;
+
       const name = (document.getElementById('inv-name') as HTMLInputElement).value;
       const platform = (document.getElementById('inv-platform') as HTMLInputElement).value;
       const type = (document.getElementById('inv-type') as HTMLSelectElement).value;
@@ -712,7 +720,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
       const notes = (document.getElementById('inv-notes') as HTMLInputElement).value;
 
       if (invested_amount > 0 && !account_id) {
-        alert(isEn ? '> ERROR: Select a source account.' : '> ERROR: Selecciona una cuenta de origen.');
+        window.FinTrackAlert(isEn ? '> ERROR: Select a source account.' : '> ERROR: Selecciona una cuenta de origen.');
         return;
       }
 
@@ -723,7 +731,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
             body: JSON.stringify({ action: 'create_investment', name, platform, type, invested_amount, current_value, start_date, notes, account_id }) });
           if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
           window.location.reload();
-        } catch (err: any) { alert(`> ERROR: ${err.message}`); }
+        } catch (err: any) { window.FinTrackAlert(`> ERROR: ${err.message}`); }
       });
     });
 
@@ -733,13 +741,13 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
         const id = (e.target as HTMLElement).getAttribute('data-id');
         if (!id) return;
         const current_value = parseFloat((document.getElementById(`inv-value-${id}`) as HTMLInputElement).value);
-        if (isNaN(current_value)) { alert(isEn ? '> ERROR: Enter a valid value.' : '> ERROR: Ingresa un valor válido.'); return; }
+        if (isNaN(current_value)) { window.FinTrackAlert(isEn ? '> ERROR: Enter a valid value.' : '> ERROR: Ingresa un valor válido.'); return; }
         try {
           const res = await fetch('/api/portfolio', { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'update_investment', id, current_value }) });
           if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
           window.location.reload();
-        } catch (err: any) { alert(`> ERROR: ${err.message}`); }
+        } catch (err: any) { window.FinTrackAlert(`> ERROR: ${err.message}`); }
       });
     });
 
@@ -755,7 +763,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
               body: JSON.stringify({ action: 'delete_investment', id }) });
             if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
             window.location.reload();
-          } catch (err: any) { alert(`> ERROR: ${err.message}`); }
+          } catch (err: any) { window.FinTrackAlert(`> ERROR: ${err.message}`); }
         });
       });
     });
@@ -763,6 +771,10 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
     // ── CRÉDITOS: Crear ──
     document.getElementById('credit-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      
+      const confirmed = await window.FinTrackConfirm(isEn ? 'Confirm credit creation?' : '¿Confirmar registro de crédito/deuda?');
+      if (!confirmed) return;
+
       const name = (document.getElementById('credit-name') as HTMLInputElement).value;
       const total_amount = parseFloat((document.getElementById('credit-total') as HTMLInputElement).value);
       const remaining_amount = parseFloat((document.getElementById('credit-remaining') as HTMLInputElement).value);
@@ -779,7 +791,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
             body: JSON.stringify({ action: 'create_credit', name, total_amount, remaining_amount, monthly_payment, interest_rate, institution, start_date, end_date }) });
           if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
           window.location.reload();
-        } catch (err: any) { alert(`> ERROR: ${err.message}`); }
+        } catch (err: any) { window.FinTrackAlert(`> ERROR: ${err.message}`); }
       });
     });
 
@@ -804,8 +816,8 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
         if (!id) return;
         const amount = parseFloat((document.getElementById(`credit-pay-${id}`) as HTMLInputElement).value);
         const account_id = (document.getElementById(`credit-acc-${id}`) as HTMLSelectElement).value;
-        if (isNaN(amount) || amount <= 0) { alert(isEn ? '> ERROR: Enter a valid payment amount.' : '> ERROR: Ingresa un monto de abono válido.'); return; }
-        if (!account_id) { alert(isEn ? '> ERROR: Select a source account.' : '> ERROR: Selecciona una cuenta de origen.'); return; }
+        if (isNaN(amount) || amount <= 0) { window.FinTrackAlert(isEn ? '> ERROR: Enter a valid payment amount.' : '> ERROR: Ingresa un monto de abono válido.'); return; }
+        if (!account_id) { window.FinTrackAlert(isEn ? '> ERROR: Select a source account.' : '> ERROR: Selecciona una cuenta de origen.'); return; }
         const msg = isEn ? `Pay ${amount} on this credit?` : `¿Abonar ${amount} a este crédito?`;
         openModal(msg, async () => {
           try {
@@ -813,7 +825,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
               body: JSON.stringify({ action: 'pay_credit', id, amount, account_id }) });
             if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
             window.location.reload();
-          } catch (err: any) { alert(`> ERROR: ${err.message}`); }
+          } catch (err: any) { window.FinTrackAlert(`> ERROR: ${err.message}`); }
         });
       });
     });
@@ -830,7 +842,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
               body: JSON.stringify({ action: 'delete_credit', id }) });
             if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
             window.location.reload();
-          } catch (err: any) { alert(`> ERROR: ${err.message}`); }
+          } catch (err: any) { window.FinTrackAlert(`> ERROR: ${err.message}`); }
         });
       });
     });
