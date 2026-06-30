@@ -1,12 +1,22 @@
 /**
- * Formatea un valor numérico como Pesos Chilenos (CLP) sin decimales.
- * Ejemplo: 15000 -> $15.000
+ * Formatea un valor numérico según la moneda seleccionada.
+ * Por defecto usa Pesos Chilenos (CLP) si no se especifica otra.
  */
-export function formatCLP(amount: number): string {
-  return new Intl.NumberFormat('es-CL', {
+export function formatCLP(amount: number, currency: string = 'CLP'): string {
+  const locale = currency === 'CLP' 
+    ? 'es-CL' 
+    : currency === 'EUR' 
+      ? 'de-DE' 
+      : currency === 'MXN' || currency === 'COP' || currency === 'ARS'
+        ? 'es-MX'
+        : 'en-US';
+
+  const decimalDigits = (currency === 'CLP' || currency === 'COP') ? 0 : 2;
+
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: 'CLP',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    currency: currency,
+    minimumFractionDigits: decimalDigits,
+    maximumFractionDigits: decimalDigits,
   }).format(amount);
 }

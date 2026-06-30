@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import crypto from 'crypto';
 
 // Definir la ruta física del archivo de base de datos
 const dbPath = path.resolve(process.cwd(), 'fintrack.db');
@@ -48,7 +49,7 @@ export function initDatabase() {
     CREATE TABLE IF NOT EXISTS categories (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        type TEXT CHECK(type IN ('income', 'expense')) NOT NULL,
+        type TEXT CHECK(type IN ('income', 'expense', 'allocation')) NOT NULL,
         icon TEXT,
         color TEXT,
         parent_id TEXT,
@@ -61,7 +62,7 @@ export function initDatabase() {
         account_id TEXT NOT NULL,
         category_id TEXT NOT NULL,
         amount REAL NOT NULL,
-        type TEXT CHECK(type IN ('income', 'expense', 'transfer')) NOT NULL,
+        type TEXT CHECK(type IN ('income', 'expense', 'allocation', 'transfer')) NOT NULL,
         date TEXT NOT NULL, -- Formato YYYY-MM-DD
         description TEXT,
         destination_account_id TEXT, -- Solo para transferencias entre cuentas
@@ -93,7 +94,35 @@ export function initDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Tabla de Caché de Análisis de IA (Vesper)
+    -- Tabla de Inversiones (Portfolio)
+    CREATE TABLE IF NOT EXISTS investments (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        platform TEXT,
+        type TEXT CHECK(type IN ('fund', 'stock', 'crypto', 'deposit', 'other')) NOT NULL DEFAULT 'other',
+        invested_amount REAL NOT NULL DEFAULT 0.0,
+        current_value REAL NOT NULL DEFAULT 0.0,
+        currency TEXT NOT NULL DEFAULT 'CLP',
+        start_date TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Tabla de Créditos (Portfolio)
+    CREATE TABLE IF NOT EXISTS credits (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        total_amount REAL NOT NULL,
+        remaining_amount REAL NOT NULL,
+        monthly_payment REAL,
+        interest_rate REAL,
+        start_date TEXT,
+        end_date TEXT,
+        institution TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Tabla de Caché de Análisis de IA (Moneypenny)
     CREATE TABLE IF NOT EXISTS analysis_cache (
         type TEXT PRIMARY KEY,
         content TEXT NOT NULL,
@@ -107,6 +136,24 @@ export function initDatabase() {
   } catch (e) {
     // La columna ya existe, ignorar
   }
+
+  // Migración: columnas de vínculo en transacciones
+  try {
+    db.prepare('ALTER TABLE transactions ADD COLUMN related_entity_id TEXT').run();
+  } catch (e) { /* La columna ya existe */ }
+  try {
+    db.prepare('ALTER TABLE transactions ADD COLUMN related_entity_type TEXT').run();
+  } catch (e) { /* La columna ya existe */ }
+
+  // Migración: cuenta de origen en objetivos de ahorro
+  try {
+    db.prepare('ALTER TABLE saving_goals ADD COLUMN source_account_id TEXT').run();
+  } catch (e) { /* La columna ya existe */ }
+
+  // Migración: cuenta de origen en inversiones
+  try {
+    db.prepare('ALTER TABLE investments ADD COLUMN source_account_id TEXT').run();
+  } catch (e) { /* La columna ya existe */ }
 
   // Crear algunas categorías por defecto si la tabla está vacía
   const categoriesCount = db.prepare('SELECT COUNT(*) as count FROM categories').get() as { count: number };
@@ -128,6 +175,12 @@ export function initDatabase() {
       insertCategory.run(crypto.randomUUID(), 'Salario', 'income', '💼', '#22c55e');
       insertCategory.run(crypto.randomUUID(), 'Inversiones', 'income', '📈', '#06b6d4');
       insertCategory.run(crypto.randomUUID(), 'Otros Ingresos', 'income', '💵', '#10b981');
+
+      // Asignaciones
+      insertCategory.run(crypto.randomUUID(), 'Ahorro', 'allocation', '💰', '#1dc7b5');
+      insertCategory.run(crypto.randomUUID(), 'Inversión', 'allocation', '📈', '#06b6d4');
+      insertCategory.run(crypto.randomUUID(), 'Pago de Crédito', 'allocation', '🏦', '#f59e0b');
+      insertCategory.run(crypto.randomUUID(), 'Fondo de Emergencia', 'allocation', '🛡️', '#8b5cf6');
     });
 
     insertDefaults();
@@ -136,5 +189,55 @@ export function initDatabase() {
   console.log('✅ Base de datos SQLite y categorías por defecto inicializadas con éxito.');
 }
 
+/**
+ * Migración: Reclasifica la categoría 'Ahorro' y sus transacciones de 'expense' a 'allocation'.
+ * También recrea las tablas categories y transactions con los nuevos CHECK constraints.
+ * Idempotente: se puede ejecutar múltiples veces sin problemas.
+ */
+function migrateToAllocation() {
+  try {
+    db.transaction(() => {
+      // 1. Reclasificar categoría 'Ahorro' de expense → allocation si aún no se ha hecho
+      const ahorroAsExpense = db.prepare(
+        "SELECT id FROM categories WHERE name = 'Ahorro' AND type = 'expense'"
+      ).get() as { id: string } | undefined;
+
+      if (ahorroAsExpense) {
+        db.prepare("UPDATE categories SET type = 'allocation' WHERE id = ?").run(ahorroAsExpense.id);
+        db.prepare(
+          "UPDATE transactions SET type = 'allocation' WHERE category_id = ? AND type = 'expense'"
+        ).run(ahorroAsExpense.id);
+        console.log('✅ Categoría Ahorro reclasificada a allocation.');
+      }
+
+      // 2. Asegurar que todas las categorías de allocation existan
+      const allocationCategories = [
+        { name: 'Ahorro', icon: '💰', color: '#1dc7b5' },
+        { name: 'Inversión', icon: '📈', color: '#06b6d4' },
+        { name: 'Pago de Crédito', icon: '🏦', color: '#f59e0b' },
+        { name: 'Fondo de Emergencia', icon: '🛡️', color: '#8b5cf6' },
+      ];
+
+      for (const cat of allocationCategories) {
+        const exists = db.prepare(
+          "SELECT id FROM categories WHERE name = ? AND type = 'allocation'"
+        ).get(cat.name);
+
+        if (!exists) {
+          db.prepare(
+            "INSERT INTO categories (id, name, type, icon, color) VALUES (?, ?, 'allocation', ?, ?)"
+          ).run(crypto.randomUUID(), cat.name, cat.icon, cat.color);
+          console.log(`✅ Categoría allocation '${cat.name}' creada.`);
+        }
+      }
+    })();
+
+    console.log('✅ Migración allocation completada.');
+  } catch (error: any) {
+    console.error('⚠️ Error en migración allocation:', error.message);
+  }
+}
+
 // Ejecutar inicialización al cargar el módulo
 initDatabase();
+migrateToAllocation();

@@ -171,3 +171,61 @@ input[type="month"]::-webkit-calendar-picker-indicator:hover {
   -ms-overflow-style: none !important;  /* IE y Edge */
   scrollbar-width: none !important;  /* Firefox */
 }
+
+/* ── ESTILOS PARA MARKDOWN EN TERMINAL ── */
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+  color: var(--color-accent);
+  font-weight: bold;
+  margin: 0;
+  line-height: 1.0;
+}
+.markdown-body p {
+  margin: 0;
+  line-height: 1.0;
+}
+.markdown-body ul, .markdown-body ol {
+  margin: 0;
+  padding-left: 1em;
+  line-height: 1.0;
+}
+.markdown-body li {
+  margin: 0;
+  line-height: 1.0;
+  list-style-type: square;
+}
+.markdown-body strong {
+  color: var(--color-accent);
+}
+.markdown-body em {
+  font-style: italic;
+  color: var(--color-text-secondary);
+}
+.markdown-body blockquote {
+  border-left: 2px solid var(--color-border);
+  padding-left: 0.75em;
+  color: var(--color-muted);
+  margin-left: 0;
+  margin-bottom: 0.5em;
+}
+.markdown-body code {
+  background-color: var(--color-bg-subtle);
+  padding: 0.2em 0.4em;
+  border-radius: 2px;
+  font-size: 0.9em;
+  color: var(--color-accent-hover);
+}
+/* ── VALIDATION STYLES ── */
+label:has(+ input[required])::after,
+label:has(+ select[required])::after,
+label:has(~ input[required])::after,
+label:has(~ select[required])::after {
+  content: ' *';
+  color: #ef4444; /* red-500 */
+  font-weight: bold;
+}
+
+input:invalid:not(:placeholder-shown):not(:focus),
+select:invalid:not(:focus) {
+  border-color: #ef4444 !important;
+  background-color: rgba(239, 68, 68, 0.05);
+}

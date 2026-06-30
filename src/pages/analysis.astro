@@ -1,8 +1,12 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import { db } from '../lib/db';
+import Sidebar from '../components/Sidebar.astro';
+import { getI18n } from '../lib/i18n';
+import { marked } from 'marked';
 
 const user = Astro.locals.user;
+const { lang, t } = getI18n(Astro);
 
 // Obtener los análisis guardados en la base de datos
 const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis_cache').all() as Array<{
@@ -10,94 +14,168 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
   content: string;
   updated_at: number;
 }>;
+
+let defaultTab = 'situacion';
+let defaultContent = '';
+let defaultTimestamp = 0;
+
+if (savedAnalyses.length > 0) {
+  // Sort by updated_at descending to get the most recent
+  savedAnalyses.sort((a, b) => b.updated_at - a.updated_at);
+  defaultTab = savedAnalyses[0].type;
+  defaultContent = savedAnalyses[0].content;
+  defaultTimestamp = savedAnalyses[0].updated_at;
+}
+
+const formatTimestampServer = (ts: number) => {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${day}/${month} ${hours}:${minutes}`;
+};
+const defaultFormattedTime = defaultTimestamp ? formatTimestampServer(defaultTimestamp) : '';
+const defaultContentHtml = defaultContent ? marked.parse(defaultContent) : '';
 ---
 
-<Layout title="FinTrack - Análisis Vesper Pro IA">
+<Layout title={"FinTrack - " + (lang === 'es' ? 'Análisis Moneypenny IA' : 'Moneypenny AI Analysis')}>
   <div class="flex flex-col md:flex-row min-h-screen">
     
     <!-- Sidebar / Panel de Control -->
-    <aside class="w-full md:w-64 bg-bg-subtle border-b md:border-b-0 md:border-r border-border-main p-4 flex flex-col md:justify-between gap-4 md:gap-0">
-      <div class="flex flex-col md:flex-col justify-between gap-2 md:gap-0">
-        <!-- Logo con info de usuario compacta en mobile -->
-        <div class="flex items-center justify-between p-2 border border-dashed border-border-subtle bg-bg md:mb-8 w-full">
-          <span class="text-lg md:text-xl font-bold text-main font-mono">[FT] FinTrack</span>
-          <div class="flex items-center gap-2 md:hidden font-mono text-[10px]">
-            <span class="text-secondary">{user?.username || 'admin'}</span>
-            <a href="/api/auth/logout" class="text-red-500 border border-red-900 bg-red-950/20 px-2 py-0.5 font-bold">[X]</a>
-          </div>
-        </div>
-
-        <!-- Navigation Links -->
-        <nav class="flex flex-row md:flex-col overflow-x-auto md:overflow-x-visible gap-2 pb-2 md:pb-0 md:space-y-2 text-xs md:text-sm font-mono whitespace-nowrap no-scrollbar">
-          <a href="/" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[DASHBOARD]</a>
-          <a href="/transactions" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[TRANSACCIONES]</a>
-          <a href="/budgets" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[PRESUPUESTOS]</a>
-          <a href="/charts" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[GRAFICAS]</a>
-          <a href="/goals" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[OBJETIVOS]</a>
-          <a href="/analysis" class="px-3 py-2 bg-border-main text-bg font-bold">[ANALISIS]</a>
-          <a href="/settings" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[RESPALDOS]</a>
-        </nav>
-      </div>
-
-      <!-- User/Session info & Logout (solo visible en desktop) -->
-      <div class="hidden md:block mt-8 pt-4 border-t border-border-subtle font-mono text-xs text-secondary space-y-2">
-        <div>USUARIO: <span class="text-main font-bold">{user?.username || 'admin'}</span></div>
-        <a href="/api/auth/logout" class="block mt-4 text-center border border-red-900 bg-red-950/20 hover:bg-red-800 hover:text-bg text-red-500 font-bold py-1 transition-colors">
-          [ CERRAR_SESION ]
-        </a>
-      </div>
-    </aside>
+    <Sidebar active="analysis" username={user?.username || 'admin'} />
 
     <!-- Main Content Area -->
     <main class="flex-1 p-6 space-y-6 overflow-y-auto font-mono">
       
       <!-- Top Title Command -->
       <div class="border-b border-border-subtle pb-4">
-        <h1 class="text-xl text-main font-bold">> vesper-pro --analyze --finances</h1>
-        <p class="text-xs text-secondary mt-1">Análisis de patrones financieros y detección de fugas de dinero mediante IA local.</p>
+        <h1 class="text-xl text-main font-bold">{t.vesper_analyze}</h1>
+        <p class="text-xs text-secondary mt-1">{t.analysis_subtitle}</p>
       </div>
 
       <!-- Vesper System Description Panel -->
       <div class="border border-border-main p-4 bg-surface-main space-y-2 text-xs">
-        <div class="text-main font-bold">[ SYSTEM_AGENT_INFO: VESPER_PRO ]</div>
-        <p class="text-secondary leading-relaxed">
-          Vesper Pro es un modelo local de alto rendimiento basado en Qwen 2.5 (7B), optimizado para auditorías de capital técnico-frugal.
-          Los análisis de situación, fugas y mejoras se realizan con la información del **mes actual**. El análisis de viabilidad de objetivos utiliza el **progreso total acumulado**.
-        </p>
+        <div class="text-main font-bold">{t.vesper_info_title}</div>
+        <p class="text-secondary leading-relaxed">{t.vesper_info_desc}</p>
       </div>
 
       <!-- Collapsible Prompts Audit Panel -->
       <details class="border border-border-subtle bg-bg p-3 text-[11px] font-mono cursor-pointer">
-        <summary class="text-secondary font-bold hover:text-main select-none">[+] MOSTRAR PROMPTS DE INSTRUCCIÓN (VESPER PRO SYSTEM INSTRUCTIONS)</summary>
+        <summary class="text-secondary font-bold hover:text-main select-none">
+          {lang === 'es' ? '[+] MOSTRAR PROMPTS DE INSTRUCCIÓN (MONEYPENNY SYSTEM INSTRUCTIONS)' : '[+] SHOW SYSTEM INSTRUCTIONS PROMPTS (MONEYPENNY)'}
+        </summary>
         <div class="mt-3 space-y-4 text-[10px] cursor-text border-t border-border-subtle pt-3">
           <div>
-            <span class="text-main font-bold">[ PROMPT: SITUACIÓN ACTUAL ]</span>
-            <pre class="bg-bg-subtle p-2 border border-border-subtle text-muted-text whitespace-pre-wrap mt-1">Actúa como Vesper, tu asesor financiero personal de alto rendimiento. Realiza un análisis crítico, ejecutivo y puntual de la SITUACIÓN FINANCIERA ACTUAL.
-- Analiza el balance global de capital y detecta si la distribución actual de liquidez entre cuentas es óptima o si hay ineficiencias (ej. capital ocioso en cuentas corrientes o falta de fondos de reserva).
-- Audita si el ritmo de gasto actual en los presupuestos del mes compromete la estabilidad general, señalando las categorías con mayor riesgo de sobregiro.
-- Sé directo, preciso y responde únicamente con viñetas analíticas de alto valor. NO repitas saldos de cuentas ni límites presupuestarios.</pre>
+            <span class="text-main font-bold">[ PROMPT: {t.tab_situacion} ]</span>
+            <pre class="bg-bg-subtle p-2 border border-border-subtle text-muted-text whitespace-pre-wrap mt-1">{
+              lang === 'es'
+                ? `Eres Moneypenny, asesora financiera personal certificada. Realiza un DIAGNÓSTICO FINANCIERO EJECUTIVO del estado actual del usuario.
+
+METODOLOGÍA DE ANÁLISIS:
+1. Salud Patrimonial: Calcula el patrimonio neto total. Evalúa si la distribución de capital entre cuentas es eficiente o si hay capital ocioso.
+2. Pulso Presupuestario: Compara el % de presupuesto consumido vs el % del mes transcurrido para cada categoría. Señala zonas de riesgo.
+3. Ratio Ingreso/Gasto: Calcula la relación entre ingresos y gastos del mes. Un ratio saludable es >1.3 (ahorrando al menos 30%).
+4. Colchón de Emergencia: Evalúa si el usuario tiene liquidez suficiente para cubrir al menos 1 mes de gastos sin ingresos.
+
+FORMATO: Encabezados Markdown (##), cifras concretas en moneda del usuario. Cierra con VEREDICTO: ESTABLE / EN RIESGO / CRÍTICO.`
+                : `You are Moneypenny, a certified personal financial advisor. Perform an EXECUTIVE FINANCIAL DIAGNOSIS of the user's current state.
+
+ANALYSIS METHODOLOGY:
+1. Net Worth Health: Calculate total net worth. Evaluate if capital distribution across accounts is efficient or if there is idle capital.
+2. Budget Pulse: Compare % of budget consumed vs % of month elapsed for each category. Flag risk zones.
+3. Income/Expense Ratio: Calculate the relationship between income and expenses. A healthy ratio is >1.3 (saving at least 30%).
+4. Emergency Cushion: Evaluate if the user has enough liquidity to cover at least 1 month of expenses without income.
+
+FORMAT: Markdown headings (##), concrete figures in user currency. Close with VERDICT: STABLE / AT RISK / CRITICAL.`
+            }</pre>
           </div>
           <div>
-            <span class="text-main font-bold">[ PROMPT: AUDITORÍA DE FUGAS ]</span>
-            <pre class="bg-bg-subtle p-2 border border-border-subtle text-muted-text whitespace-pre-wrap mt-1">Actúa como Vesper, tu asesor financiero personal de alto rendimiento. Audita las transacciones del mes buscando FUGAS DE DINERO e ineficiencias de gasto.
-- Detecta comportamientos de gasto innecesarios, consumos hormiga acumulativos, posibles suscripciones redundantes, o egresos sin sentido.
-- Explica la causa raíz detectada en el patrón de transacciones y calcula el impacto financiero anual proyectado (ej. "Gastar $X diarios en Y equivale a $Z al año").
-- Sé directo y responde en viñetas analíticas precisas. NO listes transacciones individuales ni hagas tablas de consumos.</pre>
+            <span class="text-main font-bold">[ PROMPT: {t.tab_fugas} ]</span>
+            <pre class="bg-bg-subtle p-2 border border-border-subtle text-muted-text whitespace-pre-wrap mt-1">{
+              lang === 'es'
+                ? `Eres Moneypenny, auditora financiera forense especializada en detección de fugas de capital. Ejecuta una AUDITORÍA DE FUGAS Y GASTOS FANTASMA.
+
+PROTOCOLO DE AUDITORÍA:
+1. Gastos Hormiga: Transacciones pequeñas recurrentes. Calcula acumulado mensual y proyección anual.
+2. Suscripciones y Pagos Recurrentes: Detecta duplicidades o servicios infrautilizados.
+3. Gastos Impulsivos: Egresos que rompen el patrón normal (montos inusuales, categorías atípicas).
+4. Sobregasto por Categoría: Categorías donde el gasto supera o está en camino de superar el presupuesto.
+
+SISTEMA DE ALERTAS:
+🔴 CRITICAL — Fuga >10% del ingreso mensual. Acción inmediata.
+⚠️ WARNING — Fuga 3%-10% del ingreso. Hábito costoso a corregir.
+🟡 CAUTION — Fuga <3% del ingreso, con tendencia creciente.
+
+Cierra con RESUMEN: total fugas, monto fugado, % sobre ingresos.`
+                : `You are Moneypenny, a forensic financial auditor specialized in capital leakage detection. Execute a LEAKAGE & PHANTOM EXPENSE AUDIT.
+
+AUDIT PROTOCOL:
+1. Micro-expenses: Small recurring transactions. Calculate monthly total and annual projection.
+2. Subscriptions & Recurring Payments: Detect duplicates or underutilized services.
+3. Impulse Spending: Outlier expenses that break normal spending patterns.
+4. Category Overspend: Categories where spending exceeds or is on track to exceed budget.
+
+ALERT SYSTEM:
+🔴 CRITICAL — Leakage >10% of monthly income. Immediate action required.
+⚠️ WARNING — Leakage 3%-10% of income. Costly habit to correct.
+🟡 CAUTION — Leakage <3% of income, with growing trend.
+
+Close with SUMMARY: total leakages, leaked amount, % of income.`
+            }</pre>
           </div>
           <div>
-            <span class="text-main font-bold">[ PROMPT: PLANES DE MEJORA ]</span>
-            <pre class="bg-bg-subtle p-2 border border-border-subtle text-muted-text whitespace-pre-wrap mt-1">Actúa como Vesper, tu asesor financiero personal de alto rendimiento. Diseña un PLAN DE ACCIÓN Y MEJORA frugal e inteligente.
-- Propón de 3 a 5 medidas concretas y técnicas para reducir gastos en las categorías más críticas del mes actual.
-- Diseña una estrategia práctica para automatizar u optimizar el flujo de efectivo local (reglas de ahorro, frugalidad inteligente).
-- Sé directo y responde en puntos concretos y accionables. Evita generalidades financieras.</pre>
+            <span class="text-main font-bold">[ PROMPT: {t.tab_mejoras} ]</span>
+            <pre class="bg-bg-subtle p-2 border border-border-subtle text-muted-text whitespace-pre-wrap mt-1">{
+              lang === 'es'
+                ? `Eres Moneypenny, consultora financiera estratégica. Diseña un PLAN TÁCTICO DE OPTIMIZACIÓN FINANCIERA personalizado.
+
+ESTRUCTURA DEL PLAN:
+1. Recortes Inmediatos (esta semana): 2-3 acciones ejecutables HOY. Indica categoría, ahorro estimado, y alternativa concreta.
+2. Optimización de Flujo (este mes): 2-3 estrategias de redistribución de capital entre cuentas.
+3. Hábitos Frugales de Alto Impacto (largo plazo): 2-3 cambios de hábito con proyección de ahorro anual.
+4. Meta de Ahorro Sugerida: Porcentaje realista y monto exacto basado en ingresos/gastos actuales.
+
+Cada medida incluye: acción concreta, ahorro estimado, dificultad (FÁCIL / MEDIA / DIFÍCIL). Sin consejos genéricos.`
+                : `You are Moneypenny, a strategic financial consultant. Design a personalized TACTICAL FINANCIAL OPTIMIZATION PLAN.
+
+PLAN STRUCTURE:
+1. Immediate Cuts (this week): 2-3 actions executable TODAY. Specify category, estimated savings, and concrete alternative.
+2. Flow Optimization (this month): 2-3 capital redistribution strategies across accounts.
+3. High-Impact Frugal Habits (long term): 2-3 habit changes with annual savings projection.
+4. Suggested Savings Target: Realistic percentage and exact amount based on current income/expenses.
+
+Each measure includes: concrete action, estimated savings, difficulty (EASY / MEDIUM / HARD). No generic advice.`
+            }</pre>
           </div>
           <div>
-            <span class="text-main font-bold">[ PROMPT: VIABILIDAD DE OBJETIVOS ]</span>
-            <pre class="bg-bg-subtle p-2 border border-border-subtle text-muted-text whitespace-pre-wrap mt-1">Actúa como Vesper, tu asesor financiero personal de alto rendimiento. Analiza matemáticamente la VIABILIDAD Y AVANCE DE LOS OBJETIVOS DE AHORRO.
-- Para cada objetivo, calcula y muestra un PORCENTAJE estimado de probabilidad de cumplimiento (de 0% a 100%) y explica detalladamente el PORQUÉ de dicha probabilidad (ej. basándote en la tasa de ahorro requerida vs real, tiempo restante en meses y capital acumulado).
-- Indica claramente cuáles objetivos son FACTIBLES y cuáles están en RIESGO DE INCUMPLIMIENTO.
-- Calcula e indica explícitamente para cada objetivo la CANTIDAD MENSUAL exacta en pesos (CLP) que se debe aportar o depositar de ahora en adelante para lograr cumplirlo con éxito dentro de su fecha límite (deadline).
-- Responde en puntos concisos y precisos. NO repitas las metas o montos acumulados si no es para aportar la cantidad mensual requerida, el porcentaje o el análisis de la probabilidad.</pre>
+            <span class="text-main font-bold">[ PROMPT: {t.tab_objetivos} ]</span>
+            <pre class="bg-bg-subtle p-2 border border-border-subtle text-muted-text whitespace-pre-wrap mt-1">{
+              lang === 'es'
+                ? `Eres Moneypenny, analista financiera cuantitativa. Realiza un ANÁLISIS MATEMÁTICO DE VIABILIDAD de los objetivos de ahorro.
+
+METODOLOGÍA POR OBJETIVO:
+1. Progreso Actual: % completado (acumulado / meta).
+2. Tiempo Restante: Meses exactos entre hoy y el deadline.
+3. Aporte Mensual Requerido: (meta - acumulado) / meses restantes.
+4. Probabilidad de Cumplimiento: 0-100% basado en aporte requerido vs ingreso disponible.
+   - <15% ingreso → ALTA (70-100%) | 15-30% → MEDIA (40-69%) | >30% → BAJA (0-39%)
+5. Clasificación: ✅ FACTIBLE | ⚠️ EN RIESGO | 🔴 INVIABLE
+
+Cierra con RECOMENDACIÓN ESTRATÉGICA: orden de prioridad y si conviene pausar algún objetivo.`
+                : `You are Moneypenny, a quantitative financial analyst. Perform a MATHEMATICAL VIABILITY ANALYSIS of savings goals.
+
+METHODOLOGY PER GOAL:
+1. Current Progress: % completed (accumulated / target).
+2. Remaining Time: Exact months between today and the deadline.
+3. Required Monthly Contribution: (target - accumulated) / months remaining.
+4. Completion Probability: 0-100% based on required contribution vs available income.
+   - <15% income → HIGH (70-100%) | 15-30% → MEDIUM (40-69%) | >30% → LOW (0-39%)
+5. Classification: ✅ FEASIBLE | ⚠️ AT RISK | 🔴 NOT VIABLE
+
+Close with STRATEGIC RECOMMENDATION: priority order and whether to pause any goal to concentrate resources.`
+            }</pre>
           </div>
         </div>
       </details>
@@ -109,47 +187,47 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
           <button 
             data-type="situacion" 
             id="btn-situacion"
-            class="analysis-trigger bg-bg-subtle hover:bg-border-main border border-border-main text-main hover:text-bg font-bold py-2 px-3 transition-colors cursor-pointer text-xs uppercase"
+            class={`analysis-trigger border border-border-main font-bold py-2 px-3 transition-colors cursor-pointer text-xs uppercase ${defaultTab === 'situacion' ? 'bg-border-main text-bg' : 'bg-bg-subtle text-main hover:bg-border-main hover:text-bg'}`}
           >
-            [ 01_AUDITAR_SITUACION ]
+            {lang === 'es' ? '[ 01_AUDITAR_SITUACION ]' : '[ 01_AUDIT_SITUATION ]'}
           </button>
           <button 
             data-type="fugas" 
             id="btn-fugas"
-            class="analysis-trigger bg-bg-subtle hover:bg-border-main border border-border-main text-main hover:text-bg font-bold py-2 px-3 transition-colors cursor-pointer text-xs uppercase"
+            class={`analysis-trigger border border-border-main font-bold py-2 px-3 transition-colors cursor-pointer text-xs uppercase ${defaultTab === 'fugas' ? 'bg-border-main text-bg' : 'bg-bg-subtle text-main hover:bg-border-main hover:text-bg'}`}
           >
-            [ 02_AUDITAR_FUGAS ]
+            {lang === 'es' ? '[ 02_AUDITAR_FUGAS ]' : '[ 02_AUDIT_LEAKAGES ]'}
           </button>
           <button 
             data-type="mejoras" 
             id="btn-mejoras"
-            class="analysis-trigger bg-bg-subtle hover:bg-border-main border border-border-main text-main hover:text-bg font-bold py-2 px-3 transition-colors cursor-pointer text-xs uppercase"
+            class={`analysis-trigger border border-border-main font-bold py-2 px-3 transition-colors cursor-pointer text-xs uppercase ${defaultTab === 'mejoras' ? 'bg-border-main text-bg' : 'bg-bg-subtle text-main hover:bg-border-main hover:text-bg'}`}
           >
-            [ 03_PLANES_MEJORA ]
+            {lang === 'es' ? '[ 03_PLANES_MEJORA ]' : '[ 03_IMPROVEMENT_PLANS ]'}
           </button>
           <button 
             data-type="objetivos" 
             id="btn-objetivos"
-            class="analysis-trigger bg-bg-subtle hover:bg-border-main border border-border-main text-main hover:text-bg font-bold py-2 px-3 transition-colors cursor-pointer text-xs uppercase"
+            class={`analysis-trigger border border-border-main font-bold py-2 px-3 transition-colors cursor-pointer text-xs uppercase ${defaultTab === 'objetivos' ? 'bg-border-main text-bg' : 'bg-bg-subtle text-main hover:bg-border-main hover:text-bg'}`}
           >
-            [ 04_VIABILIDAD_OBJETIVOS ]
+            {lang === 'es' ? '[ 04_VIABILIDAD_OBJETIVOS ]' : '[ 04_GOALS_VIABILITY ]'}
           </button>
         </div>
 
         <div class="flex flex-wrap justify-between items-center gap-2 text-xs">
-          <div class="text-secondary font-bold select-none">> vesper-pro --mode=interactive</div>
+          <div class="text-secondary font-bold select-none">> moneypenny --mode=interactive</div>
           
           <div class="flex items-center gap-2">
             <!-- Botón para forzar una nueva generación -->
             <button 
               id="refresh-analysis-btn" 
-              class="hidden bg-bg border border-accent text-accent hover:bg-accent hover:text-bg font-bold py-1 px-2 transition-colors cursor-pointer uppercase text-[10px]"
+              class={`${defaultContent ? 'block' : 'hidden'} bg-bg border border-accent text-accent hover:bg-accent hover:text-bg font-bold py-1 px-2 transition-colors cursor-pointer uppercase text-[10px]`}
             >
-              [ REGENERAR_REPORTE ]
+              {t.btn_regenerate}
             </button>
             
             <div id="status-badge" class="text-[10px] text-muted-text uppercase font-bold border border-border-subtle px-2 py-1 bg-bg-subtle">
-              STATUS: READY
+              {defaultFormattedTime ? `CACHED (${defaultFormattedTime})` : 'STATUS: READY'}
             </div>
           </div>
         </div>
@@ -157,7 +235,7 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
         <!-- Terminal Output Window -->
         <div class="terminal-window m-0">
           <div class="terminal-header">
-            <span>vesper-pro@fintrack — stdout — bash 80x24</span>
+            <span>moneypenny@fintrack — stdout — bash 80x24</span>
             <div class="terminal-buttons">
               <span class="terminal-button"></span>
               <span class="terminal-button"></span>
@@ -166,7 +244,8 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
           </div>
           <div class="terminal-body bg-bg text-main font-mono text-xs md:text-sm min-h-[350px] max-h-[650px] overflow-y-auto p-4 border border-t-0 border-border-subtle" id="terminal-stdout-container">
             <!-- Terminal output body content -->
-            <div class="whitespace-pre-wrap leading-relaxed" id="terminal-stdout">> Selecciona una de las auditorías de Vesper Pro en los botones superiores para ejecutar su prompt correspondiente sobre los datos de la base de datos local.</div>
+            <div class="whitespace-pre-wrap markdown-body max-w-none" id="terminal-stdout" set:html={defaultContentHtml || (lang === 'es' ? '&gt; Selecciona una de las auditorías de Moneypenny en los botones superiores para ejecutar su prompt correspondiente sobre los datos de la base de datos local.' : '&gt; Select one of the Moneypenny audits on the top buttons to execute its corresponding prompt on the local database.')}>
+            </div>
           </div>
         </div>
       </div>
@@ -175,8 +254,17 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
   </div>
 </Layout>
 
-<script define:vars={{ savedAnalyses }}>
-  const statusBadge = document.getElementById('status-badge');
+<div id="analysis-data" data-analyses={JSON.stringify(savedAnalyses)} class="hidden"></div>
+
+<script>
+  import { marked } from 'marked';
+
+  document.addEventListener('astro:page-load', () => {
+    const dataEl = document.getElementById('analysis-data');
+    if (!dataEl) return;
+    const savedAnalyses = JSON.parse(dataEl.getAttribute('data-analyses'));
+
+    const statusBadge = document.getElementById('status-badge');
   const terminalStdout = document.getElementById('terminal-stdout');
   const terminalStdoutContainer = document.getElementById('terminal-stdout-container');
   const triggerButtons = document.querySelectorAll('.analysis-trigger');
@@ -184,6 +272,9 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
 
   let currentAnimationId = null;
   let activeType = null;
+  let loadingIntervalId = null;
+
+  const isEn = document.cookie.includes('lang=en');
 
   // Cargar datos cacheados
   const cachedAnalyses = {};
@@ -218,6 +309,14 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
   }
 
   // Muestra un análisis (ya sea de caché o nuevo)
+  function formatTokens(text) {
+    if (!text) return '';
+    return text
+      .replace(/\[VERDE:\s*([^\]]+)\]/gi, '<span class="text-green-500 font-bold">🟢 $1</span>')
+      .replace(/\[AMARILLO:\s*([^\]]+)\]/gi, '<span class="text-yellow-500 font-bold">🟡 $1</span>')
+      .replace(/\[ROJO:\s*([^\]]+)\]/gi, '<span class="text-red-500 font-bold">🔴 $1</span>');
+  }
+
   function showAnalysis(type, content, isNew = false, timestamp = null) {
     activeType = type;
     highlightButton(type);
@@ -226,6 +325,10 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
     if (currentAnimationId !== null) {
       cancelAnimationFrame(currentAnimationId);
       currentAnimationId = null;
+    }
+    if (loadingIntervalId !== null) {
+      clearInterval(loadingIntervalId);
+      loadingIntervalId = null;
     }
 
     if (refreshBtn) refreshBtn.classList.remove('hidden');
@@ -238,15 +341,18 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
     if (!terminalStdout) return;
 
     if (isNew) {
-      // Efecto typewriter para nuevos reportes
+      // Efecto typewriter para nuevos reportes con renderizado dinámico de markdown
       terminalStdout.innerHTML = '';
       let index = 0;
       const charsPerTick = 15;
       
       function typeWriter() {
         if (index < content.length) {
-          terminalStdout.innerHTML += content.substr(index, charsPerTick);
           index += charsPerTick;
+          if (index > content.length) index = content.length;
+          
+          terminalStdout.innerHTML = marked.parse(formatTokens(content.substr(0, index)));
+          
           if (terminalStdoutContainer) {
             terminalStdoutContainer.scrollTop = terminalStdoutContainer.scrollHeight;
           }
@@ -257,8 +363,8 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
       }
       typeWriter();
     } else {
-      // Render instantáneo para caché
-      terminalStdout.innerHTML = content;
+      // Render instantáneo para caché con markdown
+      terminalStdout.innerHTML = marked.parse(formatTokens(content));
       if (terminalStdoutContainer) {
         terminalStdoutContainer.scrollTop = 0;
       }
@@ -281,12 +387,17 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
       btn.disabled = true;
       btn.classList.add('opacity-40', 'cursor-not-allowed');
     });
-    if (clickedBtn) clickedBtn.textContent = '[ PROCESANDO... ]';
+    if (clickedBtn) clickedBtn.textContent = isEn ? '[ PROCESSING... ]' : '[ PROCESANDO... ]';
     if (refreshBtn) refreshBtn.classList.add('hidden');
 
     if (statusBadge) statusBadge.textContent = `STATUS: AUDITING_${type.toUpperCase()}`;
 
-    const labels = {
+    const labels = isEn ? {
+      situacion: 'GENERAL STATUS',
+      fugas: 'MONEY LEAKAGE DETECTION',
+      mejoras: 'IMPROVEMENT PLAN & EFFICIENCY',
+      objetivos: 'GOALS VIABILITY & PROGRESS'
+    } : {
       situacion: 'ESTATUS GENERAL',
       fugas: 'DETECCIÓN DE FUGAS DE DINERO',
       mejoras: 'PLAN DE MEJORA Y EFICIENCIA',
@@ -294,7 +405,15 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
     };
 
     if (terminalStdout) {
-      terminalStdout.innerHTML = `> Iniciando prompt para: ${labels[type]}...\n> Consultando balances y transacciones del mes actual...\n> Enviando contexto a Vesper Pro local...\n\n[════════════════════════════════════════] EJECUTANDO PROMPT...`;
+      let progress = 0;
+      const barWidth = 40;
+      loadingIntervalId = setInterval(() => {
+        progress = (progress + 1) % (barWidth + 1);
+        const bar = '[' + '='.repeat(progress) + '-'.repeat(barWidth - progress) + ']';
+        terminalStdout.innerHTML = isEn
+          ? `> Starting prompt for: ${labels[type]}...\n> Querying balances and transactions...\n> ${bar} RUNNING PROMPT...`
+          : `> Iniciando prompt para: ${labels[type]}...\n> Consultando balances y transacciones...\n> ${bar} EJECUTANDO PROMPT...`;
+      }, 100);
     }
 
     try {
@@ -307,7 +426,7 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Error desconocido al invocar al agente Vesper Pro.');
+        throw new Error(data.error || (isEn ? 'Unknown error invoking local Moneypenny agent.' : 'Error desconocido al invocar al agente Moneypenny.'));
       }
 
       // Guardar en la caché en memoria del cliente
@@ -322,9 +441,15 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
     } catch (err) {
       if (statusBadge) statusBadge.textContent = 'STATUS: ERROR';
       if (terminalStdout) {
-        terminalStdout.innerHTML = `\n> ERROR CRÍTICO: ${err.message}\n> Asegúrate de que Ollama esté corriendo con el modelo "vesper-pro" disponible.`;
+        terminalStdout.innerHTML = isEn
+          ? `\n> CRITICAL ERROR: ${err.message}\n> Make sure the Moneypenny Agent API is running on port 8000 with Ollama's "gemma2:2b" model available.`
+          : `\n> ERROR CRÍTICO: ${err.message}\n> Asegúrate de que la API de Moneypenny esté corriendo en el puerto 8000 con el modelo "gemma2:2b" disponible en Ollama.`;
       }
     } finally {
+      if (loadingIntervalId !== null) {
+        clearInterval(loadingIntervalId);
+        loadingIntervalId = null;
+      }
       // Rehabilitar botones
       triggerButtons.forEach(btn => {
         btn.disabled = false;
@@ -357,17 +482,7 @@ const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis
     }
   });
 
-  // CARGAR AL INICIO: Mostrar el reporte más reciente si hay alguno guardado
-  let mostRecentType = null;
-  let maxTime = 0;
-  for (const key in cachedAnalyses) {
-    if (cachedAnalyses[key].updated_at > maxTime) {
-      maxTime = cachedAnalyses[key].updated_at;
-      mostRecentType = key;
-    }
-  }
-
-  if (mostRecentType) {
-    showAnalysis(mostRecentType, cachedAnalyses[mostRecentType].content, false, cachedAnalyses[mostRecentType].updated_at);
-  }
+  // El estado inicial ahora es renderizado desde el servidor en Astro.
+  activeType = document.querySelector('.analysis-trigger.bg-border-main')?.getAttribute('data-type') || null;
+  });
 </script>

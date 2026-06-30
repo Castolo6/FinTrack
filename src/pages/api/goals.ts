@@ -42,9 +42,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
     const executePostTransaction = db.transaction(() => {
       // 1. Crear el bolsillo/objetivo
       db.prepare(`
-        INSERT INTO saving_goals (id, name, target_amount, current_amount, saving_platform, deadline)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(id, name.trim(), target_amount, current_amount, saving_platform?.trim() || null, deadline || null);
+        INSERT INTO saving_goals (id, name, target_amount, current_amount, saving_platform, deadline, source_account_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(id, name.trim(), target_amount, current_amount, saving_platform?.trim() || null, deadline || null, account_id || null);
 
       // 2. Si hay monto inicial, descontar de la cuenta y registrar transacción
       if (current_amount > 0 && account_id && account) {
@@ -52,19 +52,19 @@ export const POST: APIRoute = async ({ request, locals }) => {
         db.prepare('UPDATE accounts SET balance = ? WHERE id = ?').run(newBalance, account_id);
 
         // Buscar/crear categoría "Ahorro"
-        let category = db.prepare("SELECT id FROM categories WHERE name = 'Ahorro' AND type = 'expense'").get() as { id: string } | undefined;
+        let category = db.prepare("SELECT id FROM categories WHERE name = 'Ahorro' AND type = 'allocation'").get() as { id: string } | undefined;
         if (!category) {
           const newCatId = crypto.randomUUID();
-          db.prepare("INSERT INTO categories (id, name, type, icon, color) VALUES (?, 'Ahorro', 'expense', '💰', '#1dc7b5')").run(newCatId);
+          db.prepare("INSERT INTO categories (id, name, type, icon, color) VALUES (?, 'Ahorro', 'allocation', '💰', '#1dc7b5')").run(newCatId);
           category = { id: newCatId };
         }
 
         const txId = crypto.randomUUID();
         const today = new Date().toISOString().split('T')[0];
         db.prepare(`
-          INSERT INTO transactions (id, account_id, category_id, amount, type, date, description)
-          VALUES (?, ?, ?, ?, 'expense', ?, ?)
-        `).run(txId, account_id, category.id, current_amount, today, `Aporte inicial bolsillo: ${name.trim()}`);
+          INSERT INTO transactions (id, account_id, category_id, amount, type, date, description, related_entity_id, related_entity_type)
+          VALUES (?, ?, ?, ?, 'allocation', ?, ?, ?, 'saving_goal')
+        `).run(txId, account_id, category.id, current_amount, today, `Aporte inicial bolsillo: ${name.trim()}`, id);
       }
     });
 
@@ -112,9 +112,20 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
       return new Response(JSON.stringify({ error: 'La cuenta seleccionada no existe.' }), { status: 404 });
     }
 
+    // Validar saldo suficiente para depósitos (excepto tarjetas de crédito)
+    if (action === 'deposit') {
+      const accountType = db.prepare('SELECT type FROM accounts WHERE id = ?').get(account_id) as { type: string } | undefined;
+      if (accountType && accountType.type !== 'credit_card' && account.balance < amount) {
+        return new Response(
+          JSON.stringify({ error: `Saldo insuficiente. Disponible: ${account.balance}, requerido: ${amount}.` }),
+          { status: 400 }
+        );
+      }
+    }
+
     // Obtener o crear la categoría de Ahorro
     const catName = action === 'deposit' ? 'Ahorro' : 'Retiro de Ahorro';
-    const catType = action === 'deposit' ? 'expense' : 'income';
+    const catType = action === 'deposit' ? 'allocation' : 'income';
     const catIcon = '💰';
     const catColor = '#1dc7b5';
 
@@ -156,10 +167,12 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
         ? `Depósito a bolsillo: ${goal.name}`
         : `Retiro desde bolsillo: ${goal.name}${reason ? ' (' + reason.trim() + ')' : ''}`;
 
+      // Usar el monto real movido (actualWithdraw para retiros, amount para depósitos)
+      const txAmount = action === 'withdraw' ? Math.min(goal.current_amount, amount) : amount;
       db.prepare(`
-        INSERT INTO transactions (id, account_id, category_id, amount, type, date, description)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(txId, account_id, category!.id, amount, catType, today, desc);
+        INSERT INTO transactions (id, account_id, category_id, amount, type, date, description, related_entity_id, related_entity_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'saving_goal')
+      `).run(txId, account_id, category!.id, txAmount, catType, today, desc, id);
     });
 
     executeTransaction();

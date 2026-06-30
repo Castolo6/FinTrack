@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { db } from '../../lib/db';
 import { formatCLP } from '../../lib/utils';
 
-export const POST: APIRoute = async ({ request, locals }) => {
+export const POST: APIRoute = async ({ request, locals, cookies }) => {
   try {
     // 1. Verificar autenticación
     if (!locals.user) {
@@ -12,6 +12,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     // 2. Obtener tipo de análisis del cuerpo de la petición
     const body = await request.json();
     const { type } = body; // 'situacion' | 'fugas' | 'mejoras' | 'objetivos'
+    const currency = cookies.get('currency')?.value || 'CLP';
 
     if (!type || !['situacion', 'fugas', 'mejoras', 'objetivos'].includes(type)) {
       return new Response(JSON.stringify({ error: 'Tipo de análisis inválido o ausente.' }), { status: 400 });
@@ -59,6 +60,18 @@ export const POST: APIRoute = async ({ request, locals }) => {
       deadline: string | null;
     }>;
 
+    // C2. Inversiones
+    let investments: Array<{name: string; type: string; invested_amount: number; current_value: number; platform: string | null;}> = [];
+    try {
+      investments = db.prepare('SELECT name, type, invested_amount, current_value, platform FROM investments').all() as typeof investments;
+    } catch(e) {}
+
+    // C3. Créditos
+    let credits: Array<{name: string; total_amount: number; remaining_amount: number; monthly_payment: number | null; interest_rate: number | null;}> = [];
+    try {
+      credits = db.prepare('SELECT name, total_amount, remaining_amount, monthly_payment, interest_rate FROM credits').all() as typeof credits;
+    } catch(e) {}
+
     // D. Últimas transacciones (filtradas por mes actual, excepto para metas)
     let recentTransactions;
     if (type === 'objetivos') {
@@ -98,28 +111,75 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     // 4. Configurar instrucciones del prompt específicas según el botón clickeado
+    const daysInMonth = new Date(currentYear, now.getMonth() + 1, 0).getDate();
+    const currentDay = now.getDate();
+    const daysRemaining = daysInMonth - currentDay;
+    const monthProgress = Math.round((currentDay / daysInMonth) * 100);
+
     let targetedInstructions = '';
     if (type === 'situacion') {
-      targetedInstructions = `Actúa como Vesper, tu asesor financiero personal de alto rendimiento. Realiza un análisis crítico, ejecutivo y puntual de la SITUACIÓN FINANCIERA ACTUAL.
-- Analiza el balance global de capital y detecta si la distribución actual de liquidez entre cuentas es óptima o si hay ineficiencias (ej. capital ocioso en cuentas corrientes o falta de fondos de reserva).
-- Audita si el ritmo de gasto actual en los presupuestos del mes compromete la estabilidad general, señalando las categorías con mayor riesgo de sobregiro.
-- Sé directo, preciso y responde únicamente con viñetas analíticas de alto valor. NO repitas saldos de cuentas ni límites presupuestarios.`;
+      targetedInstructions = `Eres Moneypenny, asesora financiera personal certificada. Realiza un DIAGNÓSTICO FINANCIERO EJECUTIVO del estado actual del usuario.
+
+METODOLOGÍA DE ANÁLISIS:
+1. **Salud Patrimonial**: Calcula el patrimonio neto total (suma de todos los saldos). Evalúa si la distribución de capital entre cuentas es eficiente o si hay capital ocioso que debería estar generando rendimiento.
+2. **Pulso Presupuestario**: Estamos en el día ${currentDay} de ${daysInMonth} del mes (${monthProgress}% del mes transcurrido). Compara el porcentaje de presupuesto consumido vs el porcentaje del mes transcurrido para cada categoría. Si el gasto supera proporcionalmente el avance del mes, señálalo como zona de riesgo.
+3. **Ratio Ingreso/Gasto**: Calcula la relación entre ingresos y gastos del mes. Un ratio saludable es >1.3 (ahorrando al menos 30%). Indica el ratio real.
+4. **Colchón de Emergencia**: Evalúa si el usuario tiene liquidez suficiente para cubrir al menos 1 mes de gastos sin ingresos.
+
+FORMATO DE RESPUESTA:
+- Usa encabezados Markdown (##) para cada sección.
+- Incluye cifras concretas en ${currency}, no generalidades.
+- Cierra con un VEREDICTO de 1 línea sobre la salud financiera general. Debes usar EXCLUSIVAMENTE uno de estos tres tokens para el estado: [VERDE: ESTABLE], [AMARILLO: EN RIESGO], o [ROJO: CRÍTICO].
+- NO repitas los saldos de cuentas ni los límites presupuestarios literalmente, el usuario ya los conoce.`;
     } else if (type === 'fugas') {
-      targetedInstructions = `Actúa como Vesper, tu asesor financiero personal de alto rendimiento. Audita las transacciones del mes buscando FUGAS DE DINERO e ineficiencias de gasto.
-- Detecta comportamientos de gasto innecesarios, consumos hormiga acumulativos, posibles suscripciones redundantes, o egresos sin sentido.
-- Explica la causa raíz detectada en el patrón de transacciones y calcula el impacto financiero anual proyectado (ej. "Gastar $X diarios en Y equivale a $Z al año").
-- Sé directo y responde en viñetas analíticas precisas. NO listes transacciones individuales ni hagas tablas de consumos.`;
+      targetedInstructions = `Eres Moneypenny, auditora financiera forense especializada en detección de fugas de capital. Ejecuta una AUDITORÍA DE FUGAS Y GASTOS FANTASMA sobre las transacciones del mes.
+
+PROTOCOLO DE AUDITORÍA:
+1. **Gastos Hormiga**: Identifica transacciones pequeñas recurrentes que individualmente parecen insignificantes pero que en conjunto representan una fuga considerable. Calcula su acumulado mensual y proyección anual.
+2. **Suscripciones y Pagos Recurrentes**: Detecta patrones de pagos periódicos. Evalúa si existen duplicidades o servicios potencialmente infrautilizados.
+3. **Gastos Impulsivos**: Señala egresos que rompen el patrón normal de gasto del usuario (montos inusuales, categorías atípicas, frecuencia anormal).
+4. **Sobregasto por Categoría**: Identifica categorías donde el gasto del mes ya supera el presupuesto asignado o está en camino de superarlo (estamos al ${monthProgress}% del mes).
+
+SISTEMA DE ALERTAS — Clasifica CADA fuga detectada con uno de estos niveles de severidad:
+- 🔴 **CRITICAL** — Fuga que supera el 10% del ingreso mensual o compromete la estabilidad financiera. Requiere acción inmediata.
+- ⚠️ **WARNING** — Fuga entre el 3% y 10% del ingreso mensual. Patrón de gasto que se está convirtiendo en hábito costoso y debe corregirse este mes.
+- 🟡 **CAUTION** — Fuga menor al 3% del ingreso mensual, pero con tendencia creciente o potencial de escalar si no se monitorea.
+
+FORMATO DE RESPUESTA:
+- Cada fuga detectada debe comenzar con su etiqueta de severidad (🔴/⚠️/🟡).
+- Incluye el **impacto mensual** y la **proyección anual** en ${currency} para cada fuga.
+- Cierra con un RESUMEN DE AUDITORÍA: total de fugas detectadas, monto total fugado en el mes, y el porcentaje que esto representa sobre los ingresos del mes.
+- NO listes transacciones individuales. Agrupa por patrón de comportamiento.`;
     } else if (type === 'mejoras') {
-      targetedInstructions = `Actúa como Vesper, tu asesor financiero personal de alto rendimiento. Diseña un PLAN DE ACCIÓN Y MEJORA frugal e inteligente.
-- Propón de 3 a 5 medidas concretas y técnicas para reducir gastos en las categorías más críticas del mes actual.
-- Diseña una estrategia práctica para automatizar u optimizar el flujo de efectivo local (reglas de ahorro, frugalidad inteligente).
-- Sé directo y responde en puntos concretos y accionables. Evita generalidades financieras.`;
+      targetedInstructions = `Eres Moneypenny, consultora financiera estratégica especializada en optimización de finanzas personales. Diseña un PLAN TÁCTICO DE OPTIMIZACIÓN FINANCIERA personalizado.
+
+ESTRUCTURA DEL PLAN:
+1. **Recortes Inmediatos (esta semana)**: De 2 a 3 acciones que el usuario puede ejecutar HOY para reducir gastos. Sé específico: indica exactamente qué categoría recortar, cuánto ahorraría, y la alternativa concreta (ej. "Reemplazar X por Y ahorra ~${currency} Z/mes").
+2. **Optimización de Flujo (este mes)**: De 2 a 3 estrategias para redistribuir el capital de forma más eficiente entre cuentas. Si hay capital ocioso en cuentas corrientes, sugiere moverlo a instrumentos que generen rendimiento.
+3. **Hábitos Frugales de Alto Impacto (largo plazo)**: De 2 a 3 cambios de hábito concretos basados en los patrones de gasto detectados. Incluye la proyección de ahorro anual de cada hábito.
+4. **Meta de Ahorro Sugerida**: Basándote en los ingresos y gastos actuales, sugiere un porcentaje realista de ahorro mensual y el monto exacto en ${currency}. Quedan ${daysRemaining} días para cerrar el mes.
+
+FORMATO DE RESPUESTA:
+- Usa encabezados Markdown (##) y viñetas numeradas para cada medida.
+- Cada medida debe incluir: la acción concreta, el ahorro estimado en ${currency}, y la dificultad de implementación.
+- REGLA ESTRICTA PARA LA DIFICULTAD: Debes usar EXCLUSIVAMENTE uno de estos tres tokens para indicar la dificultad: [VERDE: FÁCIL], [AMARILLO: MEDIA], o [ROJO: DIFÍCIL]. No uses el texto crudo.
+- NO incluyas consejos genéricos tipo "ahorra más" o "gasta menos". Cada punto debe ser accionable y cuantificado.`;
     } else {
-      targetedInstructions = `Actúa como Vesper, tu asesor financiero personal de alto rendimiento. Analiza matemáticamente la VIABILIDAD Y AVANCE DE LOS OBJETIVOS DE AHORRO.
-- Para cada objetivo, calcula y muestra un PORCENTAJE estimado de probabilidad de cumplimiento (de 0% a 100%) y explica detalladamente el PORQUÉ de dicha probabilidad (ej. basándote en la tasa de ahorro requerida vs real, tiempo restante en meses y capital acumulado).
-- Indica claramente cuáles objetivos son FACTIBLES y cuáles están en RIESGO DE INCUMPLIMIENTO.
-- Calcula e indica explícitamente para cada objetivo la CANTIDAD MENSUAL exacta en pesos (CLP) que se debe aportar o depositar de ahora en adelante para lograr cumplirlo con éxito dentro de su fecha límite (deadline).
-- Responde en puntos concisos y precisos. NO repitas las metas o montos acumulados si no es para aportar la cantidad mensual requerida, el porcentaje o el análisis de la probabilidad.`;
+      targetedInstructions = `Eres Moneypenny, analista financiera cuantitativa especializada en proyecciones y viabilidad de patrimonio. Realiza un ANÁLISIS MATEMÁTICO DE VIABILIDAD del portafolio completo del usuario (ahorros, inversiones y deudas).
+
+METODOLOGÍA DE ANÁLISIS:
+1. **Bolsillos de Ahorro**: Para cada objetivo, calcula el porcentaje completado, meses restantes y aporte mensual requerido. 
+   - REGLA ESTRICTA DE FORMATO: Debes mostrar la probabilidad de cumplimiento usando ÚNICAMENTE uno de estos tres tokens exactos (reemplaza X con el número real): [VERDE: X%], [AMARILLO: X%], o [ROJO: X%]. No uses otras palabras para la probabilidad.
+2. **Deudas y Créditos**: Analiza las cuotas mensuales comprometidas de los créditos. Señala cuáles créditos deberían prepagarse primero (efecto avalancha o bola de nieve) basándote en la tasa de interés o en el saldo pendiente.
+3. **Inversiones**: Revisa el desempeño actual de las inversiones (Ganancia/Pérdida). Sugiere si el usuario tiene una distribución equilibrada o si presenta riesgo de concentración.
+4. **Viabilidad Global**: Marca la salud del portafolio como ✅ FACTIBLE, ⚠️ EN RIESGO o 🔴 INVIABLE (basado en el ratio de deuda vs liquidez y metas).
+
+FORMATO DE RESPUESTA:
+- Usa bloques claros para [ 1. AHORROS ], [ 2. DEUDAS ] y [ 3. INVERSIONES ].
+- Incluye montos exactos en ${currency} y porcentajes precisos.
+- RECUERDA PARA AHORROS: Usa los tokens [VERDE: X%], [AMARILLO: X%] o [ROJO: X%] literalmente.
+- Cierra con una RECOMENDACIÓN ESTRATÉGICA para el patrimonio global (qué deuda pagar primero, dónde invertir el excedente, qué objetivo pausar).
+- NO repitas los montos acumulados o totales literalmente a modo de lista. Analiza y concluye.`;
     }
 
     // 5. Unificar con los datos reales
@@ -128,48 +188,64 @@ export const POST: APIRoute = async ({ request, locals }) => {
 DATOS FINANCIEROS REALES DEL USUARIO:
 
 === CUENTAS ACTIVAS ===
-${accounts.map(acc => `- ${acc.name} (${acc.type.toUpperCase()}): ${formatCLP(acc.balance)} ${acc.currency}`).join('\n') || 'No hay cuentas registradas.'}
+${accounts.map(acc => `- ${acc.name} (${acc.type.toUpperCase()}): ${formatCLP(acc.balance, currency)} ${acc.currency}`).join('\n') || 'No hay cuentas registradas.'}
 
 === ESTADO DE PRESUPUESTOS (Mes: ${currentMonth}/${currentYear}) ===
-${budgets.map(b => `- Categoría: ${b.category_name} | Límite: ${formatCLP(b.budget_limit)} | Gastado: ${formatCLP(b.spent)} (${b.percent}% ocupado)`).join('\n') || 'No hay presupuestos configurados para este mes.'}
+${budgets.map(b => `- Categoría: ${b.category_name} | Límite: ${formatCLP(b.budget_limit, currency)} | Gastado: ${formatCLP(b.spent, currency)} (${b.percent}% ocupado)`).join('\n') || 'No hay presupuestos configurados para este mes.'}
 
 === OBJETIVOS DE AHORRO Y BOLSILLOS ===
-${goals.map(g => `- Bolsillo: ${g.name} | Acumulado: ${formatCLP(g.current_amount)} / Meta: ${formatCLP(g.target_amount)} | Plazo: ${g.deadline || 'Sin plazo'} (Plataforma: ${g.saving_platform || 'No especificada'})`).join('\n') || 'No hay objetivos de ahorro creados.'}
+${goals.map(g => `- Bolsillo: ${g.name} | Acumulado: ${formatCLP(g.current_amount, currency)} / Meta: ${formatCLP(g.target_amount, currency)} | Plazo: ${g.deadline || 'Sin plazo'} (Plataforma: ${g.saving_platform || 'No especificada'})`).join('\n') || 'No hay objetivos de ahorro creados.'}
+
+=== INVERSIONES ===
+${investments.map(i => `- ${i.name} (${i.type}): Invertido ${formatCLP(i.invested_amount, currency)} | Actual: ${formatCLP(i.current_value, currency)} | Plataforma: ${i.platform || 'N/A'}`).join('\n') || 'No hay inversiones registradas.'}
+
+=== CRÉDITOS Y DEUDAS ===
+${credits.map(c => `- ${c.name}: Deuda Total ${formatCLP(c.total_amount, currency)} | Pendiente: ${formatCLP(c.remaining_amount, currency)} | Cuota: ${c.monthly_payment ? formatCLP(c.monthly_payment, currency)+'/mes' : 'N/A'} | Tasa: ${c.interest_rate ? c.interest_rate+'%' : 'N/A'}`).join('\n') || 'No hay créditos registrados.'}
 
 === HISTORIAL DE TRANSACCIONES RECIENTES ===
-${recentTransactions.map(t => `- [${t.date}] [${t.type.toUpperCase()}] ${t.category_name} en ${t.account_name} | ${formatCLP(t.amount)} | Desc: ${t.description || 'Sin detalle'}`).join('\n') || 'No hay transacciones registradas.'}
+${recentTransactions.map(t => `- [${t.date}] [${t.type.toUpperCase()}] ${t.category_name} en ${t.account_name} | ${formatCLP(t.amount, currency)} | Desc: ${t.description || 'Sin detalle'}`).join('\n') || 'No hay transacciones registradas.'}
 
-Responde directamente en formato Markdown de forma limpia, directa y con viñetas puntuales. Evita explicaciones generales. NO incluyas tablas o listas redundantes de cuentas, saldos, presupuestos o transacciones que el usuario ya conoce. Ve al grano, sé preciso y analítico.`;
+Responde directamente en formato Markdown de forma limpia, directa y con viñetas puntuales. Evita explicaciones generales. NO incluyas tablas o listas redundantes de cuentas, saldos, presupuestos o transacciones que el usuario ya conoce. Ve al grano, sé preciso y analítico. Moneda del usuario: ${currency}.`;
 
-    // 6. Invocar a Ollama local para generar el reporte específico
-    const ollamaResponse = await fetch('http://localhost:11434/api/generate', {
+    // 6. Invocar a la API de Moneypenny local para generar el reporte específico
+    const startTime = Date.now();
+    const agentResponse = await fetch('http://localhost:8000/api/v1/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'vesper-pro',
-        prompt: prompt,
-        stream: false
+        prompt: prompt
       })
     });
 
-    if (!ollamaResponse.ok) {
-      throw new Error(`Ollama retornó un error: ${ollamaResponse.statusText}`);
+    if (!agentResponse.ok) {
+      throw new Error(`Moneypenny API retornó un error: ${agentResponse.statusText}`);
     }
 
-    const data = await ollamaResponse.json();
+    const endTime = Date.now();
+    const execTimeMs = endTime - startTime;
+    const execTimeSec = (execTimeMs / 1000).toFixed(2);
+
+    const data = await agentResponse.json();
+    
+    // Estimación aproximada de tokens (1 token ≈ 4 caracteres)
+    const inTokens = Math.round(prompt.length / 4);
+    const outTokens = Math.round((data.output?.length || 0) / 4);
+
+    const metricsHeader = `> **EXEC_TIME:** ${execTimeSec}s | **TOKENS_IN:** ~${inTokens} | **TOKENS_OUT:** ~${outTokens}\n\n`;
+    const finalOutput = metricsHeader + data.output;
 
     // Guardar el último análisis generado en el caché de la base de datos
     db.prepare(`
       INSERT INTO analysis_cache (type, content, updated_at)
       VALUES (?, ?, ?)
       ON CONFLICT(type) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at
-    `).run(type, data.response, Date.now());
+    `).run(type, finalOutput, Date.now());
 
-    return new Response(JSON.stringify({ success: true, analysis: data.response }), { status: 200 });
+    return new Response(JSON.stringify({ success: true, analysis: finalOutput }), { status: 200 });
 
   } catch (error: any) {
     return new Response(
-      JSON.stringify({ error: 'Error al ejecutar el análisis con Vesper Pro: ' + error.message }),
+      JSON.stringify({ error: 'Error al ejecutar el análisis con Moneypenny: ' + error.message }),
       { status: 500 }
     );
   }

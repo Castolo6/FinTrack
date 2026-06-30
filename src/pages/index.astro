@@ -3,16 +3,43 @@ import Layout from '../layouts/Layout.astro';
 import { db } from '../lib/db';
 import { formatCLP } from '../lib/utils';
 import FinanceCharts from '../components/FinanceCharts.astro';
+import Sidebar from '../components/Sidebar.astro';
+import { getI18n } from '../lib/i18n';
+
+const { lang, t } = getI18n(Astro);
+const currency = Astro.cookies.get('currency')?.value || 'CLP';
 
 // Obtener usuario del middleware
 const user = Astro.locals.user;
 
-// Obtener estadísticas financieras
-const netWorthResult = db.prepare('SELECT SUM(balance) as total FROM accounts').get() as { total: number | null };
-const netWorth = netWorthResult?.total || 0;
+// 1. LIQUIDEZ (Dinero en cuentas)
+const liquidityResult = db.prepare('SELECT SUM(balance) as total FROM accounts').get() as { total: number | null };
+const liquidity = liquidityResult?.total || 0;
+
+// 2. INVERSIONES Y AHORROS
+let totalInvestments = 0;
+let totalSavings = 0;
+try {
+  const inv = db.prepare('SELECT SUM(current_value) as total FROM investments').get() as { total: number | null };
+  totalInvestments = inv?.total || 0;
+  
+  const sav = db.prepare('SELECT SUM(current_amount) as total FROM saving_goals').get() as { total: number | null };
+  totalSavings = sav?.total || 0;
+} catch (e) {}
+
+// 3. DEUDAS
+let totalDebt = 0;
+try {
+  const debt = db.prepare('SELECT SUM(remaining_amount) as total FROM credits').get() as { total: number | null };
+  totalDebt = debt?.total || 0;
+} catch (e) {}
+
+// 4. PATRIMONIO TOTAL
+const netWorth = liquidity + totalInvestments + totalSavings - totalDebt;
 
 // Obtener tipo de rango y valor de los parámetros de búsqueda o valores por defecto
 const url = Astro.url;
+const isChartsActive = url.searchParams.has('type');
 const selectedPeriod = url.searchParams.get('period') || 'month'; // 'month' | 'year' | 'total'
 const selectedValue = url.searchParams.get('value') || '';
 
@@ -106,44 +133,20 @@ const incomeCategories = db.prepare("SELECT * FROM categories WHERE type = 'inco
   name: string;
   icon: string;
 }>;
+
+// Obtener categorías de asignación para formulario
+const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = 'allocation' ORDER BY name ASC").all() as Array<{
+  id: string;
+  name: string;
+  icon: string;
+}>;
 ---
 
 <Layout title="FinTrack - Terminal Dashboard">
   <div class="flex flex-col md:flex-row min-h-screen">
     
     <!-- Sidebar / Panel de Control -->
-    <aside class="w-full md:w-64 bg-bg-subtle border-b md:border-b-0 md:border-r border-border-main p-4 flex flex-col md:justify-between gap-4 md:gap-0">
-      <div class="flex flex-col md:flex-col justify-between gap-2 md:gap-0">
-        <!-- Logo con info de usuario compacta en mobile -->
-        <div class="flex items-center justify-between p-2 border border-dashed border-border-subtle bg-bg md:mb-8 w-full">
-          <span class="text-lg md:text-xl font-bold text-main font-mono">[FT] FinTrack</span>
-          <div class="flex items-center gap-2 md:hidden font-mono text-[10px]">
-            <span class="text-secondary">{user?.username || 'admin'}</span>
-            <a href="/api/auth/logout" class="text-red-500 border border-red-900 bg-red-950/20 px-2 py-0.5 font-bold">[X]</a>
-          </div>
-        </div>
-
-        <!-- Navigation Links -->
-        <nav class="flex flex-row md:flex-col overflow-x-auto md:overflow-x-visible gap-2 pb-2 md:pb-0 md:space-y-2 text-xs md:text-sm font-mono whitespace-nowrap no-scrollbar">
-          <a href="/" class="px-3 py-2 bg-border-main text-bg font-bold">[DASHBOARD]</a>
-          <a href="/transactions" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[TRANSACCIONES]</a>
-          <a href="/budgets" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[PRESUPUESTOS]</a>
-          <a href="/charts" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[GRAFICAS]</a>
-          <a href="/goals" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[OBJETIVOS]</a>
-          <a href="/analysis" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[ANALISIS]</a>
-          <a href="/settings" class="px-3 py-2 hover:bg-surface-main text-secondary hover:text-main">[RESPALDOS]</a>
-        </nav>
-      </div>
-
-      <!-- User/Session info & Logout (solo visible en desktop) -->
-      <div class="hidden md:block mt-8 pt-4 border-t border-border-subtle font-mono text-xs text-secondary space-y-2">
-        <div>USUARIO: <span class="text-main font-bold">{user?.username || 'admin'}</span></div>
-        <div>IP_CLIENTE: <span id="client-ip" class="text-muted-text">Red Local</span></div>
-        <a href="/api/auth/logout" class="block mt-4 text-center border border-red-900 bg-red-950/20 hover:bg-red-800 hover:text-bg text-red-500 font-bold py-1 transition-colors">
-          [ CERRAR_SESION ]
-        </a>
-      </div>
-    </aside>
+    <Sidebar active="dashboard" username={user?.username || 'admin'} />
 
     <!-- Main Content Area -->
     <main class="flex-1 p-6 space-y-6 overflow-y-auto">
@@ -151,28 +154,31 @@ const incomeCategories = db.prepare("SELECT * FROM categories WHERE type = 'inco
       <!-- Top Title Command & Time Filter -->
       <div class="border-b border-border-subtle pb-4 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
         <div>
-          <h1 class="text-xl font-mono text-main font-bold">> systeminfo --finances</h1>
-          <p class="text-xs text-secondary font-mono mt-1">Última actualización: {now.toLocaleString()}</p>
+          <h1 class="text-xl font-mono text-main font-bold">{t.systeminfo}</h1>
+          <p class="text-xs text-secondary font-mono mt-1">{t.last_update} {now.toLocaleString()}</p>
         </div>
         
         <!-- Time Filter Form -->
         <form method="GET" id="filter-form" class="font-mono text-xs flex flex-wrap items-center gap-3">
+          <!-- Preservar tipo de gráfico si existe en la URL -->
+          {url.searchParams.has('type') && <input type="hidden" name="type" value={url.searchParams.get('type')} />}
+          
           <div class="flex items-center gap-1.5">
-            <label class="text-secondary uppercase">[ RANGO ]:</label>
+            <label class="text-secondary uppercase">{t.range}</label>
             <select 
               name="period" 
-              onchange="document.getElementsByName('value').forEach(el => el.value = ''); this.form.submit()"
+              onchange="document.getElementsByName('value').forEach(el => el && (el.value = '')); this.form.submit()"
               class="bg-surface-main border border-border-main text-main p-1.5 focus:outline-none focus:border-accent font-bold cursor-pointer"
             >
-              <option value="month" selected={selectedPeriod === 'month'}>MENSUAL</option>
-              <option value="year" selected={selectedPeriod === 'year'}>ANUAL</option>
-              <option value="total" selected={selectedPeriod === 'total'}>TOTAL (HISTORICO)</option>
+              <option value="month" selected={selectedPeriod === 'month'}>{t.monthly}</option>
+              <option value="year" selected={selectedPeriod === 'year'}>{t.yearly}</option>
+              <option value="total" selected={selectedPeriod === 'total'}>{t.total}</option>
             </select>
           </div>
 
           {selectedPeriod === 'month' && (
             <div class="flex items-center gap-1.5">
-              <label class="text-secondary uppercase">[ MES ]:</label>
+              <label class="text-secondary uppercase">{t.month}</label>
               <input 
                 type="month" 
                 name="value" 
@@ -185,7 +191,7 @@ const incomeCategories = db.prepare("SELECT * FROM categories WHERE type = 'inco
 
           {selectedPeriod === 'year' && (
             <div class="flex items-center gap-1.5">
-              <label class="text-secondary uppercase">[ AÑO ]:</label>
+              <label class="text-secondary uppercase">{t.year}</label>
               <select 
                 name="value" 
                 onchange="this.form.submit()" 
@@ -200,60 +206,73 @@ const incomeCategories = db.prepare("SELECT * FROM categories WHERE type = 'inco
         </form>
       </div>
 
-      <!-- Financial Metrics Grid -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
-        <div class="border border-border-main bg-surface-main p-4">
-          <div class="text-xs text-secondary uppercase">[ NET_WORTH ]</div>
-          <div class="text-2xl font-bold text-main mt-2">{formatCLP(netWorth)}</div>
-        </div>
-        <div class="border border-border-main bg-surface-main p-4">
-          <div class="text-xs text-secondary uppercase">
-            {selectedPeriod === 'month' ? '[ INCOMES_MONTH ]' : selectedPeriod === 'year' ? '[ INCOMES_YEAR ]' : '[ INCOMES_TOTAL ]'}
-          </div>
-          <div class="text-2xl font-bold text-green-500 mt-2">+{formatCLP(monthlyIncome)}</div>
-        </div>
-        <div class="border border-border-main bg-surface-main p-4">
-          <div class="text-xs text-secondary uppercase">
-            {selectedPeriod === 'month' ? '[ EXPENSES_MONTH ]' : selectedPeriod === 'year' ? '[ EXPENSES_YEAR ]' : '[ EXPENSES_TOTAL ]'}
-          </div>
-          <div class="text-2xl font-bold text-red-500 mt-2">-{formatCLP(monthlyExpenses)}</div>
-        </div>
-        <div class="border border-border-main bg-surface-main p-4">
-          <div class="text-xs text-secondary uppercase">[ SAVINGS_RATE ]</div>
-          <div class="text-2xl font-bold mt-2" class:list={{ 'text-green-500': savingsRate > 0, 'text-main': savingsRate <= 0 }}>
-            {savingsRate}%
-          </div>
-        </div>
+      <!-- Tabs Navigation -->
+      <div class="flex flex-wrap gap-2 text-xs font-bold font-mono border-b border-border-subtle pb-4">
+        <button id="tab-btn-overview" class={`px-4 py-2 transition-colors cursor-pointer ${isChartsActive ? 'border border-border-main text-main hover:bg-surface-main' : 'bg-border-main text-bg border-border-main'}`}>
+          {lang === 'es' ? '[ RESUMEN ]' : '[ OVERVIEW ]'}
+        </button>
+        <button id="tab-btn-charts" class={`px-4 py-2 transition-colors cursor-pointer ${isChartsActive ? 'bg-border-main text-bg border-border-main' : 'border border-border-main text-main hover:bg-surface-main'}`}>
+          {lang === 'es' ? '[ GRÁFICAS ]' : '[ CHARTS ]'}
+        </button>
+        <button id="tab-btn-operations" class="px-4 py-2 border border-border-main text-main hover:bg-surface-main transition-colors cursor-pointer">
+          {lang === 'es' ? '[ OPERACIONES ]' : '[ OPERATIONS ]'}
+        </button>
       </div>
 
-      <!-- Charts Section -->
-      <FinanceCharts startDate={startOfMonth} endDate={endOfMonth} />
-
-      <!-- Interactive Grid: Cuentas y Registro de Datos -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- TAB 1: OVERVIEW -->
+      <div id="tab-content-overview" class={`space-y-6 ${isChartsActive ? 'hidden' : 'block'}`}>
         
-        <!-- Left Side: Cuentas y Transacciones -->
-        <section class="lg:col-span-8 space-y-6">
-          
-          <!-- Cuentas -->
-          <div class="terminal-window m-0">
-            <div class="terminal-header">
-              <span>> ls -la ./cuentas</span>
+        <!-- Financial Metrics Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
+          <div class="border border-border-main bg-surface-main p-4">
+            <div class="text-xs text-secondary uppercase">{t.net_worth || 'PATRIMONIO'}</div>
+            <div class="text-2xl font-bold text-main mt-2">{formatCLP(netWorth, currency)}</div>
+          </div>
+          <div class="border border-border-main bg-surface-main p-4">
+            <div class="text-xs text-secondary uppercase">{t.liquidity || 'LIQUIDEZ'}</div>
+            <div class="text-2xl font-bold text-accent mt-2">{formatCLP(liquidity, currency)}</div>
+          </div>
+          <div class="border border-border-main bg-surface-main p-4">
+            <div class="text-xs text-secondary uppercase">
+              {selectedPeriod === 'month' ? t.incomes_month : selectedPeriod === 'year' ? t.incomes_year : t.incomes_total}
             </div>
-            <div class="terminal-body font-mono text-sm space-y-4">
+            <div class="text-2xl font-bold text-green-500 mt-2">+{formatCLP(monthlyIncome, currency)}</div>
+          </div>
+          <div class="border border-border-main bg-surface-main p-4">
+            <div class="text-xs text-secondary uppercase">
+              {selectedPeriod === 'month' ? t.expenses_month : selectedPeriod === 'year' ? t.expenses_year : t.expenses_total}
+            </div>
+            <div class="text-2xl font-bold text-red-500 mt-2">-{formatCLP(monthlyExpenses, currency)}</div>
+          </div>
+          <div class="border border-border-main bg-surface-main p-4">
+            <div class="text-xs text-secondary uppercase">{t.savings_rate}</div>
+            <div class="text-2xl font-bold mt-2" class:list={{ 'text-green-500': savingsRate > 0, 'text-main': savingsRate <= 0 }}>
+              {savingsRate}%
+            </div>
+          </div>
+        </div>
+
+        <!-- Cuentas y Transacciones -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Cuentas -->
+          <div class="terminal-window m-0 h-full flex flex-col">
+            <div class="terminal-header">
+              <span>{t.ls_accounts}</span>
+            </div>
+            <div class="terminal-body font-mono text-sm space-y-4 flex-1">
               {accounts.length === 0 ? (
-                <div class="text-secondary p-2 border border-dashed border-border-subtle bg-bg text-center">
-                  No se encontraron cuentas activas. Utiliza el formulario de la derecha para inicializar una cuenta.
+                <div class="text-secondary p-2 border border-dashed border-border-subtle bg-bg text-center h-full flex items-center justify-center">
+                  {t.no_accounts}
                 </div>
               ) : (
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 gap-4">
                   {accounts.map(acc => (
                     <div class="border border-border-subtle p-3 bg-bg-subtle flex justify-between items-center">
                       <div>
                         <div class="font-bold text-main">{acc.name}</div>
                         <div class="text-xs text-secondary uppercase">{acc.type}</div>
                       </div>
-                      <div class="font-bold text-main">{formatCLP(acc.balance)}</div>
+                      <div class="font-bold text-main">{formatCLP(acc.balance, currency)}</div>
                     </div>
                   ))}
                 </div>
@@ -262,36 +281,35 @@ const incomeCategories = db.prepare("SELECT * FROM categories WHERE type = 'inco
           </div>
 
           <!-- Transacciones Recientes -->
-          <div class="terminal-window m-0">
+          <div class="terminal-window m-0 h-full flex flex-col">
             <div class="terminal-header">
-              <span>> tail -n 5 ./transacciones.log</span>
+              <span>{t.tail_transactions}</span>
             </div>
-            <div class="terminal-body font-mono text-sm">
+            <div class="terminal-body font-mono text-sm flex-1">
               {recentTransactions.length === 0 ? (
-                <div class="text-secondary p-2 border border-dashed border-border-subtle bg-bg text-center">
-                  Ninguna transacción registrada en el periodo seleccionado.
+                <div class="text-secondary p-2 border border-dashed border-border-subtle bg-bg text-center h-full flex items-center justify-center">
+                  {t.no_transactions}
                 </div>
               ) : (
                 <div class="overflow-x-auto">
                   <table class="w-full text-left border-collapse">
                     <thead>
                       <tr class="border-b border-border-main text-secondary text-xs uppercase">
-                        <th class="py-2 px-1">Fecha</th>
-                        <th class="py-2 px-1">Cat.</th>
-                        <th class="py-2 px-1">Cuenta</th>
-                        <th class="py-2 px-1">Descripción</th>
-                        <th class="py-2 px-1 text-right">Importe</th>
+                        <th class="py-2 px-1">{t.table_date}</th>
+                        <th class="py-2 px-1">{t.table_category}</th>
+                        <th class="py-2 px-1 text-right">{t.table_amount}</th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-border-subtle">
                       {recentTransactions.map(t => (
                         <tr class="hover:bg-surface-main">
                           <td class="py-2 px-1 text-xs text-secondary whitespace-nowrap">{t.date}</td>
-                          <td class="py-2 px-1 whitespace-nowrap">{t.category_icon} {t.category_name}</td>
-                          <td class="py-2 px-1 text-xs text-secondary">{t.account_name}</td>
-                          <td class="py-2 px-1">{t.description || '-'}</td>
+                          <td class="py-2 px-1 whitespace-nowrap">
+                            <span class="block">{t.category_icon} {t.category_name}</span>
+                            <span class="text-[10px] text-secondary">{t.account_name}</span>
+                          </td>
                           <td class={`py-2 px-1 text-right font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
-                            {t.type === 'income' ? '+' : '-'}{formatCLP(t.amount)}
+                            {t.type === 'income' ? '+' : '-'}{formatCLP(t.amount, currency)}
                           </td>
                         </tr>
                       ))}
@@ -301,65 +319,83 @@ const incomeCategories = db.prepare("SELECT * FROM categories WHERE type = 'inco
               )}
             </div>
           </div>
+        </div>
+      </div>
 
-        </section>
+      <!-- TAB 2: CHARTS -->
+      <div id="tab-content-charts" class={`space-y-6 ${isChartsActive ? 'block' : 'hidden'}`}>
+        <FinanceCharts startDate={startOfMonth} endDate={endOfMonth} />
+      </div>
 
-        <!-- Right Side: Formularios Rápidos (Cuentas y Transacciones) -->
-        <aside class="lg:col-span-4 space-y-6">
+      <!-- TAB 3: OPERATIONS -->
+      <div id="tab-content-operations" class="space-y-6 hidden">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
           
           <!-- Registrar Transacción -->
           <div class="terminal-window m-0">
             <div class="terminal-header">
-              <span>> write ./registro_transaccion.sh</span>
+              <span>{t.write_tx_sh}</span>
             </div>
             <div class="terminal-body font-mono text-xs">
               {accounts.length === 0 ? (
-                <p class="text-secondary text-center">Registra una cuenta primero antes de poder ingresar transacciones.</p>
+                <p class="text-secondary text-center">{t.no_accounts_to_register}</p>
               ) : (
                 <form id="tx-form" class="space-y-3">
                   <div>
-                    <label class="block text-secondary mb-1">TIPO</label>
-                    <select id="tx-type" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
-                      <option value="expense">GASTO (-)</option>
-                      <option value="income">INGRESO (+)</option>
+                    <label class="block text-secondary mb-1">{t.label_type}</label>
+                    <select id="tx-type" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                      <option value="expense">{t.type_expense || 'GASTO'}</option>
+                      <option value="allocation">{t.type_allocation || 'ASIGNACIÓN (→)'}</option>
+                      <option value="income">{t.type_income || 'INGRESO'}</option>
                     </select>
                   </div>
                   
                   <div>
-                    <label class="block text-secondary mb-1">CUENTA</label>
-                    <select id="tx-account" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                    <label class="block text-secondary mb-1">{t.label_account}</label>
+                    <select id="tx-account" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
                       {accounts.map(acc => (
-                        <option value={acc.id}>{acc.name} ({formatCLP(acc.balance)})</option>
+                        <option value={acc.id}>{acc.name} ({formatCLP(acc.balance, currency)})</option>
                       ))}
                     </select>
                   </div>
 
                   <div>
-                    <label class="block text-secondary mb-1">CATEGORÍA</label>
-                    <select id="tx-category" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
-                      {/* Por defecto mostramos categorías de gastos */}
-                      {expenseCategories.map(cat => (
-                        <option value={cat.id}>{cat.icon} {cat.name}</option>
-                      ))}
+                    <label class="block text-secondary mb-1">{t.label_category}</label>
+                    <select id="tx-category" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                      <optgroup label={t.type_expense || "Gastos"} id="group-expense">
+                        {expenseCategories.map(cat => (
+                          <option value={cat.id}>{cat.icon} {cat.name}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label={t.type_allocation || "Asignación de Patrimonio"} id="group-allocation" class="hidden">
+                        {allocationCategories.map(cat => (
+                          <option value={cat.id}>{cat.icon} {cat.name}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label={t.type_income || "Ingresos"} id="group-income" class="hidden">
+                        {incomeCategories.map(cat => (
+                          <option value={cat.id}>{cat.icon} {cat.name}</option>
+                        ))}
+                      </optgroup>
                     </select>
                   </div>
 
                   <div>
-                    <label class="block text-secondary mb-1">IMPORTE</label>
+                    <label class="block text-secondary mb-1">{t.label_amount}</label>
                     <input type="number" id="tx-amount" step="0.01" required placeholder="0.00" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
                   </div>
 
                   <div>
-                    <label class="block text-secondary mb-1">FECHA</label>
+                    <label class="block text-secondary mb-1">{t.label_date}</label>
                     <input type="date" id="tx-date" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
                   </div>
 
                   <div>
-                    <label class="block text-secondary mb-1">DESCRIPCIÓN</label>
+                    <label class="block text-secondary mb-1">{t.label_description}</label>
                     <input type="text" id="tx-desc" placeholder="Detalles de transacción" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
                   </div>
 
-                  <button type="submit" class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 transition-colors cursor-pointer">[ REGISTRAR ]</button>
+                  <button type="submit" class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 transition-colors cursor-pointer">{t.btn_register}</button>
                 </form>
               )}
             </div>
@@ -368,68 +404,124 @@ const incomeCategories = db.prepare("SELECT * FROM categories WHERE type = 'inco
           <!-- Crear Cuenta -->
           <div class="terminal-window m-0">
             <div class="terminal-header">
-              <span>> write ./crear_cuenta.sh</span>
+              <span>{t.write_acc_sh}</span>
             </div>
             <div class="terminal-body font-mono text-xs">
               <form id="account-form" class="space-y-3">
                 <div>
-                  <label class="block text-secondary mb-1">NOMBRE CUENTA</label>
+                  <label class="block text-secondary mb-1">{t.label_acc_name}</label>
                   <input type="text" id="acc-name" required placeholder="ej: Billetera, Banco principal" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
                 </div>
                 <div>
-                  <label class="block text-secondary mb-1">TIPO CUENTA</label>
-                  <select id="acc-type" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
-                    <option value="cash">EFECTIVO (CASH)</option>
-                    <option value="bank">BANCO (BANK)</option>
-                    <option value="credit_card">TARJETA CRÉDITO</option>
-                    <option value="investment">INVERSIONES</option>
-                    <option value="other">OTRO</option>
+                  <label class="block text-secondary mb-1">{t.label_acc_type}</label>
+                  <select id="acc-type" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                    <option value="cash">{t.option_cash}</option>
+                    <option value="bank">{t.option_bank}</option>
+                    <option value="credit_card">{t.option_credit_card}</option>
+                    <option value="investment">{t.option_investment}</option>
+                    <option value="other">{t.option_other}</option>
                   </select>
                 </div>
                 <div>
-                  <label class="block text-secondary mb-1">SALDO INICIAL</label>
-                  <input type="number" id="acc-balance" step="0.01" value="0.00" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                  <label class="block text-secondary mb-1">{t.label_acc_balance}</label>
+                  <input type="number" id="acc-balance" required step="0.01" value="0.00" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
                 </div>
-                <button type="submit" class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 transition-colors cursor-pointer">[ CREAR_CUENTA ]</button>
+                <button type="submit" class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 transition-colors cursor-pointer">{t.btn_create_account}</button>
               </form>
             </div>
           </div>
 
-        </aside>
+        </div>
       </div>
 
     </main>
   </div>
 </Layout>
 
-<script define:vars={{ expenseCategories, incomeCategories }}>
-  // Poner fecha actual por defecto en el input de fecha
+<div id="index-data" data-categories={JSON.stringify({ expenseCategories, incomeCategories, allocationCategories })} class="hidden"></div>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const dataEl = document.getElementById('index-data');
+    if (!dataEl) return;
+    const { expenseCategories, incomeCategories, allocationCategories } = JSON.parse(dataEl.getAttribute('data-categories'));
+    
+    // Lógica de Tabs
+  const btnOverview = document.getElementById('tab-btn-overview');
+  const btnCharts = document.getElementById('tab-btn-charts');
+  const btnOperations = document.getElementById('tab-btn-operations');
+  
+  const contentOverview = document.getElementById('tab-content-overview');
+  const contentCharts = document.getElementById('tab-content-charts');
+  const contentOperations = document.getElementById('tab-content-operations');
+
+  const activeClass = 'px-4 py-2 bg-border-main text-bg border-border-main transition-colors cursor-pointer';
+  const inactiveClass = 'px-4 py-2 border border-border-main text-main hover:bg-surface-main transition-colors cursor-pointer';
+
+  function switchTab(activeBtn, activeContent) {
+    if(!btnOverview || !btnCharts || !btnOperations) return;
+    
+    // Reset buttons
+    btnOverview.className = inactiveClass;
+    btnCharts.className = inactiveClass;
+    btnOperations.className = inactiveClass;
+    
+    // Hide all contents
+    contentOverview.classList.add('hidden');
+    contentCharts.classList.add('hidden');
+    contentOperations.classList.add('hidden');
+    
+    // Activate selected
+    activeBtn.className = activeClass;
+    activeContent.classList.remove('hidden');
+  }
+
+  if (btnOverview && btnCharts && btnOperations) {
+    btnOverview.addEventListener('click', () => switchTab(btnOverview, contentOverview));
+    btnCharts.addEventListener('click', () => switchTab(btnCharts, contentCharts));
+    btnOperations.addEventListener('click', () => switchTab(btnOperations, contentOperations));
+  }
+
+  // Formularios lógicas (Cuentas y Transacciones)
   const dateInput = document.getElementById('tx-date');
   if (dateInput) {
     const today = new Date().toISOString().split('T')[0];
     dateInput.value = today;
   }
 
-  // Dinamizar categorías de transacciones según el tipo (gasto o ingreso)
-  const txTypeSelect = document.getElementById('tx-type');
-  const txCategorySelect = document.getElementById('tx-category');
+  const txTypeSelect = document.getElementById('tx-type') as HTMLSelectElement;
+  const groupExpense = document.getElementById('group-expense');
+  const groupAllocation = document.getElementById('group-allocation');
+  const groupIncome = document.getElementById('group-income');
+  const categorySelect = document.getElementById('tx-category') as HTMLSelectElement;
 
   if (txTypeSelect && txCategorySelect) {
     txTypeSelect.addEventListener('change', (e) => {
-      const type = e.target.value;
-      const categories = type === 'income' ? incomeCategories : expenseCategories;
+      const type = (e.target as HTMLSelectElement).value;
       
-      txCategorySelect.innerHTML = '';
-      categories.forEach(cat => {
-        const option = document.createElement('option');
-        option.value = cat.id;
-        option.textContent = `${cat.icon} ${cat.name}`;
-        txCategorySelect.appendChild(option);
-      });
+      groupExpense?.classList.add('hidden');
+      groupAllocation?.classList.add('hidden');
+      groupIncome?.classList.add('hidden');
+
+      if (type === 'expense') {
+        groupExpense?.classList.remove('hidden');
+        if (groupExpense?.firstElementChild) {
+          categorySelect.value = (groupExpense.firstElementChild as HTMLOptionElement).value;
+        }
+      } else if (type === 'allocation') {
+        groupAllocation?.classList.remove('hidden');
+        if (groupAllocation?.firstElementChild) {
+          categorySelect.value = (groupAllocation.firstElementChild as HTMLOptionElement).value;
+        }
+      } else if (type === 'income') {
+        groupIncome?.classList.remove('hidden');
+        if (groupIncome?.firstElementChild) {
+          categorySelect.value = (groupIncome.firstElementChild as HTMLOptionElement).value;
+        }
+      }
     });
   }
 
-  // Crear Cuenta
   const accountForm = document.getElementById('account-form');
   if (accountForm) {
     accountForm.addEventListener('submit', async (e) => {
@@ -438,11 +530,14 @@ const incomeCategories = db.prepare("SELECT * FROM categories WHERE type = 'inco
       const type = document.getElementById('acc-type').value;
       const balance = parseFloat(document.getElementById('acc-balance').value || '0');
 
+      const match = document.cookie.match(/currency=([^;]+)/);
+      const currency = match ? match[1] : 'CLP';
+
       try {
         const res = await fetch('/api/accounts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, type, balance })
+          body: JSON.stringify({ name, type, balance, currency })
         });
         if (!res.ok) throw new Error('Error al crear la cuenta');
         window.location.reload();
@@ -452,7 +547,6 @@ const incomeCategories = db.prepare("SELECT * FROM categories WHERE type = 'inco
     });
   }
 
-  // Registrar Transacción
   const txForm = document.getElementById('tx-form');
   if (txForm) {
     txForm.addEventListener('submit', async (e) => {
@@ -477,10 +571,5 @@ const incomeCategories = db.prepare("SELECT * FROM categories WHERE type = 'inco
       }
     });
   }
-
-  // Intentar obtener la IP local ficticia/real
-  const clientIpEl = document.getElementById('client-ip');
-  if (clientIpEl) {
-    clientIpEl.textContent = window.location.hostname;
-  }
+  });
 </script>

@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import { ClientRouter } from 'astro:transitions';
 
 interface Props {
 	title?: string;
@@ -18,8 +19,36 @@ const { title = 'FinTrack - Hacker Terminal Finance', description = 'Administrad
 		<meta name="generator" content={Astro.generator} />
 		<title>{title}</title>
 		<meta name="description" content={description} />
+		<ClientRouter />
 	</head>
 	<body>
+		<div id="global-loader" class="fixed top-0 left-0 w-full h-[2px] bg-transparent z-[100] overflow-hidden pointer-events-none">
+			<div id="global-loader-bar" class="h-full bg-accent w-0"></div>
+		</div>
 		<slot />
+
+		<script is:inline>
+			if (!window.loaderInitialized) {
+				document.addEventListener('astro:before-preparation', () => {
+					const loader = document.getElementById('global-loader-bar');
+					if (loader) {
+						loader.style.transition = 'width 10s cubic-bezier(0.1, 0.8, 1.0, 0.1)';
+						loader.style.width = '85%';
+					}
+				});
+				document.addEventListener('astro:after-preparation', () => {
+					const loader = document.getElementById('global-loader-bar');
+					if (loader) {
+						loader.style.transition = 'width 0.2s ease-out';
+						loader.style.width = '100%';
+						setTimeout(() => {
+							loader.style.transition = 'none';
+							loader.style.width = '0';
+						}, 300);
+					}
+				});
+				window.loaderInitialized = true;
+			}
+		</script>
 	</body>
 </html>

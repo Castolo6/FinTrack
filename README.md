@@ -7,7 +7,7 @@ Ofrece total control, privacidad y soberanía de datos al procesar la base de da
 ---
 
 ## 🔍 ¿Qué es?
-FinTrack es una aplicación web de servidor (Astro SSR) con arquitectura local-first. Está pensada para ingenieros de software, entusiastas de la terminal y usuarios que valoran la privacidad de sus registros financieros. En lugar de delegar tus datos a la nube, FinTrack opera sobre una base de datos SQLite local y ejecuta un agente inteligente local (Vesper Pro) a través de Ollama.
+FinTrack es una aplicación web de servidor (Astro SSR) con arquitectura local-first. Está pensada para ingenieros de software, entusiastas de la terminal y usuarios que valoran la privacidad de sus registros financieros. En lugar de delegar tus datos a la nube, FinTrack opera sobre una base de datos SQLite local y ejecuta una agente inteligente local (Moneypenny) a través de Ollama.
 
 ---
 
@@ -34,7 +34,7 @@ FinTrack es una aplicación web de servidor (Astro SSR) con arquitectura local-f
    * Creación de objetivos con plazos límite (deadlines) y aplicaciones/plataformas de ahorro específicas.
    * Acciones rápidas en un solo paso para `[DEPOSITAR]` y `[RETIRAR]` saldo vinculados a cuentas reales.
 
-6. **Auditoría Financiera de IA (`vesper-pro --analyze`)**:
+6. **Auditoría Financiera de IA (`moneypenny --analyze`)**:
    * Auditoría inteligente e interactiva dividida en 4 áreas de prompt específicas:
      * **Situación Actual**: Análisis estructural de capital y presupuestos mensuales.
      * **Auditoría de Fugas**: Detección de consumos hormiga, ineficiencias y proyección de su impacto anual.
@@ -54,7 +54,7 @@ FinTrack es una aplicación web de servidor (Astro SSR) con arquitectura local-f
 * **Base de Datos**: [SQLite](https://sqlite.org/) a través del driver nativo síncrono ultra-rápido `better-sqlite3`.
 * **Motor Estilístico**: [TailwindCSS](https://tailwindcss.com/) y CSS nativo personalizado, configurando un esquema `color-scheme: dark` para adaptar los menús nativos del navegador al tema oscuro.
 * **Componentes Interactivos**: [React](https://react.dev/) para la reactividad de gráficas e inputs dinámicos de calendario.
-* **Inteligencia Actoral Local**: [Ollama](https://ollama.com/) ejecutando el modelo personalizado **`vesper-pro`** (basado en **`qwen2.5:7b`**).
+* **Inteligencia Actoral Local**: [Ollama](https://ollama.com/) ejecutando el modelo **`gemma2:9b`** con el nombre de agente **`Moneypenny`**.
 
 ---
 
@@ -65,19 +65,19 @@ Asegúrate de tener instalados:
 * **Node.js** v18 o superior.
 * **Ollama** ejecutándose de manera local (`ollama serve`).
 
-### 2. Configurar el Agente Vesper Pro
-Para inicializar el modelo personalizado con las directrices de asesor financiero de alto rendimiento, puedes usar el archivo `Vesper-Pro.modelfile` ubicado en el directorio principal:
+### 2. Configurar el Agente Moneypenny
+Asegúrate de haber descargado el modelo en Ollama:
 
 ```bash
-# Crear el modelo personalizado en Ollama
-ollama create vesper-pro -f /home/castolo/Vesper-Pro.modelfile
+# Descargar el modelo gemma2:9b en Ollama
+ollama pull gemma2:9b
 ```
 
-Verifica que el modelo se haya creado con éxito:
+Verifica que el modelo esté disponible localmente:
 ```bash
 ollama list
 ```
-*(Deberías ver `vesper-pro:latest` y `qwen2.5:7b` en la lista).*
+*(Deberías ver `gemma2:9b` en la lista).*
 
 ### 3. Levantar FinTrack
 1. Clona el repositorio e ingresa a la carpeta del proyecto.

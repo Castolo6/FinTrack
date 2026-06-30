@@ -1,0 +1,224 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { db } from '../lib/db';
+import { formatCLP } from '../lib/utils';
+import Sidebar from '../components/Sidebar.astro';
+import { getI18n } from '../lib/i18n';
+
+const user = Astro.locals.user;
+const { lang, t } = getI18n(Astro);
+const currency = Astro.cookies.get('currency')?.value || 'CLP';
+
+// Obtener todas las cuentas para filtros
+const accounts = db.prepare('SELECT id, name FROM accounts ORDER BY name ASC').all() as Array<{ id: string; name: string }>;
+
+// Obtener todas las transacciones para listado inicial
+const transactions = db.prepare(`
+  SELECT t.*, a.name as account_name, c.name as category_name, c.icon as category_icon
+  FROM transactions t
+  JOIN accounts a ON t.account_id = a.id
+  JOIN categories c ON t.category_id = c.id
+  ORDER BY t.date DESC, t.created_at DESC
+`).all() as Array<{
+  id: string;
+  amount: number;
+  type: string;
+  date: string;
+  description: string;
+  account_name: string;
+  category_name: string;
+  category_icon: string;
+}>;
+---
+
+<Layout title={"FinTrack - " + (lang === 'es' ? 'Registro de Transacciones' : 'Transactions Log')}>
+  <div class="flex flex-col md:flex-row min-h-screen">
+    
+    <!-- Sidebar / Panel de Control -->
+    <Sidebar active="history" username={user?.username || 'admin'} />
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-6 space-y-6 overflow-y-auto font-mono">
+      
+      <!-- Top Title Command -->
+      <div class="border-b border-border-subtle pb-4">
+        <h1 class="text-xl text-main font-bold">{t.grep_transactions}</h1>
+        <p class="text-xs text-secondary mt-1">{t.history_subtitle}</p>
+      </div>
+
+      <!-- Filter Controls (Terminal Style) -->
+      <div class="border border-border-main p-4 bg-surface-main space-y-3">
+        <div class="text-xs text-secondary font-bold">{lang === 'es' ? '[ FILTRAR_LOGS ]' : '[ FILTER_LOGS ]'}</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 text-xs">
+          <div>
+            <label class="block text-secondary mb-1">{lang === 'es' ? 'BUSCADOR' : 'SEARCH'}</label>
+            <input type="text" id="filter-search" placeholder={t.search_placeholder} class="w-full bg-bg border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+          </div>
+          <div>
+            <label class="block text-secondary mb-1">{t.label_type}</label>
+            <select id="filter-type" class="w-full bg-bg border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+              <option value="all">{lang === 'es' ? 'TODOS (*)' : 'ALL (*)'}</option>
+              <option value="expense">{t.option_expense || 'Gastos'}</option>
+              <option value="allocation">{t.type_allocation || 'Asignación (→)'}</option>
+              <option value="income">{t.option_income || 'Ingresos'}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-secondary mb-1">{t.label_account}</label>
+            <select id="filter-account" class="w-full bg-bg border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+              <option value="all">{lang === 'es' ? 'TODAS (*)' : 'ALL (*)'}</option>
+              {accounts.map(acc => (
+                <option value={acc.name}>{acc.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label class="block text-secondary mb-1">{lang === 'es' ? 'MES' : 'MONTH'}</label>
+            <input type="month" id="filter-month" class="w-full bg-bg border border-border-main text-main p-2 focus:outline-none focus:border-accent cursor-pointer" />
+          </div>
+          <div class="flex items-end">
+            <button id="clear-filters" class="w-full bg-bg-subtle hover:bg-border-main border border-border-main text-secondary hover:text-bg font-bold py-2 transition-colors cursor-pointer uppercase">
+              {lang === 'es' ? '[ LIMPIAR_FILTROS ]' : '[ CLEAR_FILTERS ]'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transactions Log Window -->
+      <div class="terminal-window m-0">
+        <div class="terminal-header">
+          <span>fintrack — transactions.log — <span id="visible-count">{transactions.length}</span> / {transactions.length} {lang === 'es' ? 'registros' : 'records'}</span>
+        </div>
+        <div class="terminal-body font-mono text-sm p-0">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="border-b border-border-main text-secondary text-xs uppercase bg-bg-subtle">
+                  <th class="py-3 px-4">{t.table_date}</th>
+                  <th class="py-3 px-4">{t.label_category}</th>
+                  <th class="py-3 px-4">{t.table_account}</th>
+                  <th class="py-3 px-4">{t.table_description}</th>
+                  <th class="py-3 px-4 text-right">{t.table_amount}</th>
+                  <th class="py-3 px-4 text-center">{t.action}</th>
+                </tr>
+              </thead>
+              <tbody id="transactions-table-body" class="divide-y divide-border-subtle">
+                {transactions.map(t => (
+                  <tr class="hover:bg-surface-main transaction-row" data-type={t.type} data-account={t.account_name} data-desc={t.description || ''} data-date={t.date}>
+                    <td class="py-2 px-4 text-xs text-secondary whitespace-nowrap">{t.date}</td>
+                    <td class="py-2 px-4 whitespace-nowrap">{t.category_icon} {t.category_name}</td>
+                    <td class="py-2 px-4 text-xs text-secondary">{t.account_name}</td>
+                    <td class="py-2 px-4 transaction-desc">{t.description || '-'}</td>
+                    <td class={`py-2 px-4 text-right font-bold whitespace-nowrap ${t.type === 'income' ? 'text-green-500' : t.type === 'allocation' ? 'text-accent' : 'text-red-500'}`}>
+                      {t.type === 'income' ? '+' : t.type === 'allocation' ? '→' : '-'}{formatCLP(t.amount, currency)}
+                    </td>
+                    <td class="py-2 px-4 text-center">
+                      <button 
+                        class="delete-btn text-xs text-red-500 hover:text-red-300 font-bold underline cursor-pointer bg-transparent border-0" 
+                        data-id={t.id}
+                      >
+                        {t.delete}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</Layout>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+// Filtrado dinámico en el cliente
+  const searchInput = document.getElementById('filter-search') as HTMLInputElement;
+  const typeSelect = document.getElementById('filter-type') as HTMLSelectElement;
+  const accountSelect = document.getElementById('filter-account') as HTMLSelectElement;
+  const monthInput = document.getElementById('filter-month') as HTMLInputElement;
+  const clearBtn = document.getElementById('clear-filters');
+  const rows = document.querySelectorAll('.transaction-row') as NodeListOf<HTMLTableRowElement>;
+  const visibleCountSpan = document.getElementById('visible-count');
+
+  function applyFilters() {
+    const searchText = searchInput.value.toLowerCase().trim();
+    const selectedType = typeSelect.value;
+    const selectedAccount = accountSelect.value;
+    const selectedMonth = monthInput.value; // Formato "YYYY-MM" o vacío
+
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+      const type = row.getAttribute('data-type');
+      const account = row.getAttribute('data-account');
+      const desc = row.getAttribute('data-desc')?.toLowerCase() || '';
+      const date = row.getAttribute('data-date') || '';
+
+      const matchSearch = desc.includes(searchText);
+      const matchType = selectedType === 'all' || type === selectedType;
+      const matchAccount = selectedAccount === 'all' || account === selectedAccount;
+      const matchMonth = !selectedMonth || date.startsWith(selectedMonth);
+
+      if (matchSearch && matchType && matchAccount && matchMonth) {
+        row.classList.remove('hidden');
+        visibleCount++;
+      } else {
+        row.classList.add('hidden');
+      }
+    });
+
+    if (visibleCountSpan) {
+      visibleCountSpan.textContent = String(visibleCount);
+    }
+  }
+
+  searchInput?.addEventListener('input', applyFilters);
+  typeSelect?.addEventListener('change', applyFilters);
+  accountSelect?.addEventListener('change', applyFilters);
+  monthInput?.addEventListener('change', applyFilters);
+
+  clearBtn?.addEventListener('click', () => {
+    if (searchInput) searchInput.value = '';
+    if (typeSelect) typeSelect.value = 'all';
+    if (accountSelect) accountSelect.value = 'all';
+    if (monthInput) monthInput.value = '';
+    applyFilters();
+  });
+
+  // Funcionalidad de eliminación
+  const deleteButtons = document.querySelectorAll('.delete-btn');
+  deleteButtons.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const target = e.target as HTMLButtonElement;
+      const id = target.getAttribute('data-id');
+      if (!id) return;
+
+      const isEn = document.cookie.includes('lang=en');
+      const confirmMsg = isEn 
+        ? 'Are you sure you want to delete this transaction? The amount will be reverted from the account balance.'
+        : '¿Estás seguro de que deseas eliminar esta transacción? Se revertirá su importe del saldo de la cuenta.';
+      
+      const confirmed = confirm(confirmMsg);
+      if (!confirmed) return;
+
+      try {
+        const response = await fetch(`/api/transactions/${id}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Error al eliminar la transacción');
+        }
+
+        window.location.reload();
+      } catch (err: any) {
+        alert(`> ERROR: ${err.message}`);
+      }
+    });
+  });
+  });
+</script>
