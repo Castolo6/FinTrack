@@ -15,7 +15,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
 
     // Obtener el objetivo antes de eliminarlo
     const goal = db.prepare(
-      'SELECT name, current_amount, source_account_id FROM saving_goals WHERE id = ?'
+      'SELECT name, current_amount, source_account_id FROM saving_goals WHERE id = ? AND deleted_at IS NULL'
     ).get(id) as { name: string; current_amount: number; source_account_id: string | null } | undefined;
 
     if (!goal) {
@@ -59,7 +59,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
       ).run(id);
 
       // 3. Eliminar el objetivo
-      db.prepare('DELETE FROM saving_goals WHERE id = ?').run(id);
+      db.prepare('UPDATE saving_goals SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
     });
 
     deleteGoal();

@@ -15,7 +15,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
 
     // Buscar la transacción completa
     const tx = db.prepare(
-      'SELECT amount, type, account_id, destination_account_id, related_entity_id, related_entity_type FROM transactions WHERE id = ?'
+      'SELECT amount, type, account_id, destination_account_id, related_entity_id, related_entity_type FROM transactions WHERE id = ? AND deleted_at IS NULL'
     ).get(id) as {
       amount: number;
       type: string;
@@ -31,7 +31,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
 
     const deleteTx = db.transaction(() => {
       // 1. Eliminar la transacción
-      db.prepare('DELETE FROM transactions WHERE id = ?').run(id);
+      db.prepare('UPDATE transactions SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
 
       // 2. Revertir el saldo de la cuenta de origen
       const reversionAdjustment = tx.type === 'income' ? -tx.amount : tx.amount;

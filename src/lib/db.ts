@@ -155,6 +155,14 @@ export function initDatabase() {
     db.prepare('ALTER TABLE investments ADD COLUMN source_account_id TEXT').run();
   } catch (e) { /* La columna ya existe */ }
 
+  // Migración: Soft Delete (deleted_at)
+  const tablesForSoftDelete = ['transactions', 'saving_goals', 'investments', 'credits'];
+  for (const table of tablesForSoftDelete) {
+    try {
+      db.prepare(`ALTER TABLE ${table} ADD COLUMN deleted_at TIMESTAMP NULL`).run();
+    } catch (e) { /* La columna ya existe */ }
+  }
+
   // Crear algunas categorías por defecto si la tabla está vacía
   const categoriesCount = db.prepare('SELECT COUNT(*) as count FROM categories').get() as { count: number };
   if (categoriesCount.count === 0) {

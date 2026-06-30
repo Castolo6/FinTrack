@@ -12,6 +12,7 @@ const currency = Astro.cookies.get('currency')?.value || 'CLP';
 // Obtener objetivos de ahorro
 const goalsList = db.prepare(`
   SELECT * FROM saving_goals 
+  WHERE deleted_at IS NULL
   ORDER BY created_at DESC
 `).all() as Array<{
   id: string;

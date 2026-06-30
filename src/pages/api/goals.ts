@@ -97,7 +97,7 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
     }
 
     // Buscar el objetivo
-    const goal = db.prepare('SELECT name, current_amount, target_amount FROM saving_goals WHERE id = ?')
+    const goal = db.prepare('SELECT name, current_amount, target_amount FROM saving_goals WHERE id = ? AND deleted_at IS NULL')
       .get(id) as { name: string; current_amount: number; target_amount: number } | undefined;
 
     if (!goal) {

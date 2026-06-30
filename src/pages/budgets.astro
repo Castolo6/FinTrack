@@ -34,7 +34,7 @@ const budgetsList = db.prepare(`
 const budgets = budgetsList.map(b => {
   const expenseResult = db.prepare(`
     SELECT SUM(amount) as total FROM transactions 
-    WHERE category_id = ? AND type = 'expense' AND date >= ? AND date <= ?
+    WHERE category_id = ? AND type = 'expense' AND date >= ? AND date <= ? AND deleted_at IS NULL
   `).get(b.category_id, startOfMonth, endOfMonth) as { total: number | null };
   
   const spent = expenseResult?.total || 0;

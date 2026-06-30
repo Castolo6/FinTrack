@@ -33,3 +33,4 @@ fintrack.db-wal
 
 # VS Code settings
 .vscode/
+google-credentials.json

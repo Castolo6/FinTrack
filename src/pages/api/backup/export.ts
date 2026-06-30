@@ -9,11 +9,14 @@ export const GET: APIRoute = async ({ locals }) => {
     }
 
     // Obtener todos los datos de las tablas
-    const users = db.prepare('SELECT id, username, password_hash, created_at FROM users').all();
-    const accounts = db.prepare('SELECT id, name, type, balance, currency, created_at FROM accounts').all();
-    const categories = db.prepare('SELECT id, name, type, icon, color, parent_id FROM categories').all();
-    const transactions = db.prepare('SELECT id, account_id, category_id, amount, type, date, description, destination_account_id, created_at FROM transactions').all();
-    const budgets = db.prepare('SELECT id, category_id, amount, period, start_date, end_date FROM budgets').all();
+    const users = db.prepare('SELECT * FROM users').all();
+    const accounts = db.prepare('SELECT * FROM accounts').all();
+    const categories = db.prepare('SELECT * FROM categories').all();
+    const transactions = db.prepare('SELECT * FROM transactions').all();
+    const budgets = db.prepare('SELECT * FROM budgets').all();
+    const saving_goals = db.prepare('SELECT * FROM saving_goals').all();
+    const investments = db.prepare('SELECT * FROM investments').all();
+    const credits = db.prepare('SELECT * FROM credits').all();
 
     const backupData = {
       version: '1.0.0',
@@ -23,7 +26,10 @@ export const GET: APIRoute = async ({ locals }) => {
         accounts,
         categories,
         transactions,
-        budgets
+        budgets,
+        saving_goals,
+        investments,
+        credits
       }
     };
 

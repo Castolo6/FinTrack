@@ -12,10 +12,10 @@ export const GET: APIRoute = async ({ locals }) => {
     }
 
     // Obtener todas las inversiones
-    const investments = db.prepare('SELECT * FROM investments ORDER BY created_at DESC').all();
+    const investments = db.prepare('SELECT * FROM investments WHERE deleted_at IS NULL ORDER BY created_at DESC').all();
 
     // Obtener todos los créditos
-    const credits = db.prepare('SELECT * FROM credits ORDER BY created_at DESC').all();
+    const credits = db.prepare('SELECT * FROM credits WHERE deleted_at IS NULL ORDER BY created_at DESC').all();
 
     // Calcular totales de inversiones
     const totalInvested = (investments as any[]).reduce((sum, inv) => sum + inv.invested_amount, 0);
@@ -32,7 +32,7 @@ export const GET: APIRoute = async ({ locals }) => {
     const accountsTotal = db.prepare('SELECT COALESCE(SUM(balance), 0) as total FROM accounts').get() as { total: number };
 
     // Obtener total ahorrado en bolsillos/objetivos
-    const savingsTotal = db.prepare('SELECT COALESCE(SUM(current_amount), 0) as total FROM saving_goals').get() as { total: number };
+    const savingsTotal = db.prepare('SELECT COALESCE(SUM(current_amount), 0) as total FROM saving_goals WHERE deleted_at IS NULL').get() as { total: number };
 
     // Patrimonio neto = cuentas + inversiones (valor actual) + ahorros - deudas
     const netWorth = accountsTotal.total + totalCurrentValue + savingsTotal.total - totalDebt;
@@ -197,7 +197,7 @@ function handleUpdateInvestment(data: any): Response {
   }
 
   // Verificar que la inversión existe
-  const existing = db.prepare('SELECT id FROM investments WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT id FROM investments WHERE id = ? AND deleted_at IS NULL').get(id);
   if (!existing) {
     return new Response(
       JSON.stringify({ error: 'La inversión no existe.' }),
@@ -252,7 +252,7 @@ function handleDeleteInvestment(data: any): Response {
   }
 
   const investment = db.prepare(
-    'SELECT name, invested_amount, source_account_id FROM investments WHERE id = ?'
+    'SELECT name, invested_amount, source_account_id FROM investments WHERE id = ? AND deleted_at IS NULL'
   ).get(id) as { name: string; invested_amount: number; source_account_id: string | null } | undefined;
 
   if (!investment) {
@@ -298,7 +298,7 @@ function handleDeleteInvestment(data: any): Response {
     ).run(id);
 
     // 3. Eliminar la inversión
-    db.prepare('DELETE FROM investments WHERE id = ?').run(id);
+    db.prepare('UPDATE investments SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
   });
 
   executeDelete();
@@ -350,7 +350,7 @@ function handlePayCredit(data: any): Response {
   }
 
   // Verificar que el crédito existe
-  const credit = db.prepare('SELECT name, remaining_amount FROM credits WHERE id = ?')
+  const credit = db.prepare('SELECT name, remaining_amount FROM credits WHERE id = ? AND deleted_at IS NULL')
     .get(id) as { name: string; remaining_amount: number } | undefined;
 
   if (!credit) {
@@ -425,7 +425,7 @@ function handleDeleteCredit(data: any): Response {
   }
 
   const credit = db.prepare(
-    'SELECT name, total_amount, remaining_amount FROM credits WHERE id = ?'
+    'SELECT name, total_amount, remaining_amount FROM credits WHERE id = ? AND deleted_at IS NULL'
   ).get(id) as { name: string; total_amount: number; remaining_amount: number } | undefined;
 
   if (!credit) {
@@ -442,7 +442,7 @@ function handleDeleteCredit(data: any): Response {
     ).run(id);
 
     // 2. Eliminar el crédito
-    db.prepare('DELETE FROM credits WHERE id = ?').run(id);
+    db.prepare('UPDATE credits SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
   });
 
   executeDelete();

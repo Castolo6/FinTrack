@@ -16,23 +16,23 @@ export const POST: APIRoute = async ({ locals }) => {
     const recalculate = db.transaction(() => {
       for (const account of accounts) {
         const incomes = db.prepare(
-          "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = 'income'"
+          "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = 'income' AND deleted_at IS NULL"
         ).get(account.id) as { total: number };
 
         const expenses = db.prepare(
-          "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = 'expense'"
+          "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = 'expense' AND deleted_at IS NULL"
         ).get(account.id) as { total: number };
 
         const allocations = db.prepare(
-          "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = 'allocation'"
+          "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = 'allocation' AND deleted_at IS NULL"
         ).get(account.id) as { total: number };
 
         const transfersOut = db.prepare(
-          "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = 'transfer'"
+          "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = 'transfer' AND deleted_at IS NULL"
         ).get(account.id) as { total: number };
 
         const transfersIn = db.prepare(
-          "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE destination_account_id = ? AND type = 'transfer'"
+          "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE destination_account_id = ? AND type = 'transfer' AND deleted_at IS NULL"
         ).get(account.id) as { total: number };
 
         const newBalance = incomes.total - expenses.total - allocations.total - transfersOut.total + transfersIn.total;

@@ -91,16 +91,49 @@ const now = new Date();
 
       </div>
 
+      <!-- Modal de Confirmación de Restauración -->
+      <div id="restore-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center backdrop-blur-sm">
+        <div class="terminal-window max-w-md w-full mx-4 m-0 shadow-2xl border-red-500">
+          <div class="terminal-header bg-red-950/50 border-b border-red-900">
+            <span class="text-red-500 font-bold">⚠️ {lang === 'es' ? 'ADVERTENCIA_CRITICA' : 'CRITICAL_WARNING'}</span>
+          </div>
+          <div class="terminal-body font-mono text-sm space-y-6">
+            <p class="text-main">
+              {lang === 'es' 
+                ? 'Estás a punto de sobrescribir toda la base de datos de FinTrack. Tus datos actuales se eliminarán de forma permanente y serán reemplazados por el respaldo.'
+                : 'You are about to overwrite the entire FinTrack database. Your current data will be permanently deleted and replaced by the backup.'}
+            </p>
+            <p class="text-red-400 text-xs">
+              {lang === 'es' 
+                ? 'La sesión se cerrará automáticamente al finalizar.'
+                : 'Your session will be automatically closed upon completion.'}
+            </p>
+            
+            <div class="flex flex-col sm:flex-row gap-4 mt-6">
+              <button id="btn-cancel-restore" type="button" class="flex-1 bg-surface-main hover:bg-surface-light border border-border-main text-secondary hover:text-main font-bold py-2 px-4 transition-colors uppercase cursor-pointer">
+                {lang === 'es' ? '[ CANCELAR ]' : '[ CANCEL ]'}
+              </button>
+              <button id="btn-confirm-restore" type="button" class="flex-1 bg-red-950/30 hover:bg-red-900 border border-red-900 text-red-500 hover:text-red-100 font-bold py-2 px-4 transition-colors uppercase cursor-pointer">
+                {lang === 'es' ? '[ EJECUTAR_AHORA ]' : '[ EXECUTE_NOW ]'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
 </Layout>
 
 <script>
   document.addEventListener('astro:page-load', () => {
-const fileInput = document.getElementById('backup-file') as HTMLInputElement;
+  const fileInput = document.getElementById('backup-file') as HTMLInputElement;
   const fileLabel = document.getElementById('file-label') as HTMLSpanElement;
   const form = document.getElementById('restore-form') as HTMLFormElement;
   const statusOutput = document.getElementById('status-output') as HTMLDivElement;
+  const restoreModal = document.getElementById('restore-modal') as HTMLDivElement;
+  const btnCancel = document.getElementById('btn-cancel-restore') as HTMLButtonElement;
+  const btnConfirm = document.getElementById('btn-confirm-restore') as HTMLButtonElement;
 
   const isEn = document.cookie.includes('lang=en');
 
@@ -114,12 +147,20 @@ const fileInput = document.getElementById('backup-file') as HTMLInputElement;
     }
   });
 
-  form?.addEventListener('submit', async (e) => {
+  form?.addEventListener('submit', (e) => {
     e.preventDefault();
-    
-    if (!fileInput.files || fileInput.files.length === 0) {
-      return;
-    }
+    if (!fileInput.files || fileInput.files.length === 0) return;
+    restoreModal.classList.remove('hidden');
+  });
+
+  btnCancel?.addEventListener('click', () => {
+    restoreModal.classList.add('hidden');
+    statusOutput.classList.add('hidden');
+  });
+
+  btnConfirm?.addEventListener('click', () => {
+    restoreModal.classList.add('hidden');
+    if (!fileInput.files || fileInput.files.length === 0) return;
 
     const file = fileInput.files[0];
     const reader = new FileReader();
@@ -127,16 +168,6 @@ const fileInput = document.getElementById('backup-file') as HTMLInputElement;
     statusOutput.classList.remove('hidden', 'border-red-900', 'text-red-500', 'bg-red-950/20', 'border-green-900', 'text-green-500', 'bg-green-950/20');
     statusOutput.textContent = isEn ? '> Reading backup file...' : '> Leyendo archivo de respaldo...';
     statusOutput.classList.add('border-border-main', 'text-secondary', 'bg-surface-main');
-
-    const confirmed = confirm(
-      isEn 
-        ? 'Are you sure you want to restore this backup? All current data will be replaced and your session will end.'
-        : '¿Estás seguro de que deseas restaurar este respaldo? Todos tus datos actuales serán reemplazados y la sesión se cerrará.'
-    );
-    if (!confirmed) {
-      statusOutput.classList.add('hidden');
-      return;
-    }
 
     reader.onload = async (event) => {
       try {

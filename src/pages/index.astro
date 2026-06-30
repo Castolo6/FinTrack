@@ -20,17 +20,17 @@ const liquidity = liquidityResult?.total || 0;
 let totalInvestments = 0;
 let totalSavings = 0;
 try {
-  const inv = db.prepare('SELECT SUM(current_value) as total FROM investments').get() as { total: number | null };
+  const inv = db.prepare('SELECT SUM(current_value) as total FROM investments WHERE deleted_at IS NULL').get() as { total: number | null };
   totalInvestments = inv?.total || 0;
   
-  const sav = db.prepare('SELECT SUM(current_amount) as total FROM saving_goals').get() as { total: number | null };
+  const sav = db.prepare('SELECT SUM(current_amount) as total FROM saving_goals WHERE deleted_at IS NULL').get() as { total: number | null };
   totalSavings = sav?.total || 0;
 } catch (e) {}
 
 // 3. DEUDAS
 let totalDebt = 0;
 try {
-  const debt = db.prepare('SELECT SUM(remaining_amount) as total FROM credits').get() as { total: number | null };
+  const debt = db.prepare('SELECT SUM(remaining_amount) as total FROM credits WHERE deleted_at IS NULL').get() as { total: number | null };
   totalDebt = debt?.total || 0;
 } catch (e) {}
 
@@ -78,13 +78,13 @@ const endOfMonth = end;
 
 const incomeResult = db.prepare(`
   SELECT SUM(amount) as total FROM transactions 
-  WHERE type = 'income' AND date >= ? AND date <= ?
+  WHERE type = 'income' AND date >= ? AND date <= ? AND deleted_at IS NULL
 `).get(startOfMonth, endOfMonth) as { total: number | null };
 const monthlyIncome = incomeResult?.total || 0;
 
 const expenseResult = db.prepare(`
   SELECT SUM(amount) as total FROM transactions 
-  WHERE type = 'expense' AND date >= ? AND date <= ?
+  WHERE type = 'expense' AND date >= ? AND date <= ? AND deleted_at IS NULL
 `).get(startOfMonth, endOfMonth) as { total: number | null };
 const monthlyExpenses = expenseResult?.total || 0;
 
@@ -106,7 +106,7 @@ const recentTransactions = db.prepare(`
   FROM transactions t
   JOIN accounts a ON t.account_id = a.id
   JOIN categories c ON t.category_id = c.id
-  WHERE t.date >= ? AND t.date <= ?
+  WHERE t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
   ORDER BY t.date DESC, t.created_at DESC
   LIMIT 5
 `).all(startOfMonth, endOfMonth) as Array<{
@@ -209,13 +209,13 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
       <!-- Tabs Navigation -->
       <div class="flex flex-wrap gap-2 text-xs font-bold font-mono border-b border-border-subtle pb-4">
         <button id="tab-btn-overview" class={`px-4 py-2 transition-colors cursor-pointer ${isChartsActive ? 'border border-border-main text-main hover:bg-surface-main' : 'bg-border-main text-bg border-border-main'}`}>
-          {lang === 'es' ? '[ RESUMEN ]' : '[ OVERVIEW ]'}
+          {t.tab_overview}
         </button>
         <button id="tab-btn-charts" class={`px-4 py-2 transition-colors cursor-pointer ${isChartsActive ? 'bg-border-main text-bg border-border-main' : 'border border-border-main text-main hover:bg-surface-main'}`}>
-          {lang === 'es' ? '[ GRÁFICAS ]' : '[ CHARTS ]'}
+          {t.tab_charts}
         </button>
         <button id="tab-btn-operations" class="px-4 py-2 border border-border-main text-main hover:bg-surface-main transition-colors cursor-pointer">
-          {lang === 'es' ? '[ OPERACIONES ]' : '[ OPERATIONS ]'}
+          {t.tab_operations}
         </button>
       </div>
 
@@ -270,7 +270,13 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
                     <div class="border border-border-subtle p-3 bg-bg-subtle flex justify-between items-center">
                       <div>
                         <div class="font-bold text-main">{acc.name}</div>
-                        <div class="text-xs text-secondary uppercase">{acc.type}</div>
+                        <div class="text-xs text-secondary uppercase">
+                          {acc.type === 'cash' ? t.option_cash : 
+                           acc.type === 'bank' ? t.option_bank : 
+                           acc.type === 'credit_card' ? t.option_credit_card : 
+                           acc.type === 'investment' ? t.option_investment : 
+                           acc.type === 'other' ? t.option_other : acc.type}
+                        </div>
                       </div>
                       <div class="font-bold text-main">{formatCLP(acc.balance, currency)}</div>
                     </div>

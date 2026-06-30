@@ -2,7 +2,7 @@
 import { getI18n } from '../lib/i18n';
 
 interface Props {
-  active: 'dashboard' | 'history' | 'portfolio' | 'budgets' | 'analysis' | 'settings' | 'help';
+  active: 'dashboard' | 'history' | 'portfolio' | 'budgets' | 'analysis' | 'settings' | 'help' | 'trash';
   username?: string;
 }
 
@@ -35,6 +35,7 @@ const getLinkClass = (page: string) => {
       <a href="/budgets" class={getLinkClass('budgets')}>{t.budgets}</a>
       <a href="/analysis" class={getLinkClass('analysis')}>{t.analysis}</a>
       <a href="/settings" class={getLinkClass('settings')}>{t.settings}</a>
+      <a href="/trash" class={getLinkClass('trash')}>{t.trash}</a>
       <a href="/help" class={getLinkClass('help')}>{t.help}</a>
     </nav>
   </div>

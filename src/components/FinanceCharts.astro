@@ -17,7 +17,7 @@ const categoryExpenses = db.prepare(`
   SELECT c.name, c.color, c.icon, SUM(t.amount) as total
   FROM transactions t
   JOIN categories c ON t.category_id = c.id
-  WHERE t.type = 'expense' AND t.date >= ? AND t.date <= ?
+  WHERE t.type = 'expense' AND t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
   GROUP BY c.id
   ORDER BY total DESC
 `).all(startDate, endDate) as Array<{
@@ -42,7 +42,7 @@ const summary = db.prepare(`
     SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
     SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
   FROM transactions
-  WHERE date >= ? AND date <= ?
+  WHERE date >= ? AND date <= ? AND deleted_at IS NULL
 `).get(startDate, endDate) as { income: number | null; expense: number | null };
 
 const totalIncome = summary?.income || 0;
@@ -58,13 +58,13 @@ const startMonth = startDate.split('-')[1];
 
 const url = Astro.url;
 const selectedType = url.searchParams.get('type') === 'income' ? 'income' : 'expense';
-const typeLabel = selectedType === 'income' ? (lang === 'es' ? 'INGRESOS' : 'INCOMES') : (lang === 'es' ? 'GASTOS' : 'EXPENSES');
+const typeLabel = selectedType === 'income' ? t.label_incomes_upper : t.label_expenses_upper;
 
 // A. OBTENER TRANSACCIONES DIARIAS (Mes de startDate)
 const dailyTransactionsRaw = db.prepare(`
   SELECT date, SUM(amount) as total
   FROM transactions
-  WHERE type = ? AND date >= ? AND date <= ?
+  WHERE type = ? AND date >= ? AND date <= ? AND deleted_at IS NULL
   GROUP BY date
   ORDER BY date ASC
 `).all(selectedType, startDate, endDate) as Array<{ date: string; total: number }>;
@@ -97,10 +97,10 @@ const dailyAreaPath = dailyPath ? `${dailyPath} L 580 130 L 20 130 Z` : '';
 
 // B. OBTENER TOTAL SEMANAL
 const weeklyData = [
-  { label: lang === 'es' ? 'Semana 1' : 'Week 1', total: 0 },
-  { label: lang === 'es' ? 'Semana 2' : 'Week 2', total: 0 },
-  { label: lang === 'es' ? 'Semana 3' : 'Week 3', total: 0 },
-  { label: lang === 'es' ? 'Semana 4' : 'Week 4', total: 0 }
+  { label: t.week_1, total: 0 },
+  { label: t.week_2, total: 0 },
+  { label: t.week_3, total: 0 },
+  { label: t.week_4, total: 0 }
 ];
 
 for (const d of dailyData) {
@@ -115,7 +115,7 @@ const maxWeekly = Math.max(...weeklyData.map(w => w.total)) || 1;
 const monthlyTransactionsRaw = db.prepare(`
   SELECT strftime('%m', date) as month, SUM(amount) as total
   FROM transactions
-  WHERE type = ? AND strftime('%Y', date) = ?
+  WHERE type = ? AND strftime('%Y', date) = ? AND deleted_at IS NULL
   GROUP BY month
   ORDER BY month ASC
 `).all(selectedType, startYear) as Array<{ month: string; total: number }>;
@@ -143,7 +143,7 @@ const maxMonthly = Math.max(...monthlyData.map(m => m.total)) || 1;
       </div>
       <div class="terminal-body font-mono text-sm flex flex-col justify-between h-[250px]">
         <h2 class="text-xs uppercase text-secondary mb-4">
-          {lang === 'es' ? '[ FLUJO_CAJA_MENSUAL ]' : '[ MONTHLY_CASH_FLOW ]'}
+          {t.chart_cashflow}
         </h2>
         
         {totalIncome === 0 && totalExpense === 0 ? (
@@ -155,12 +155,12 @@ const maxMonthly = Math.max(...monthlyData.map(m => m.total)) || 1;
             <div class="flex flex-col items-center w-24">
               <span class="text-green-500 text-xs font-bold mb-2">{formatCLP(totalIncome, currency)}</span>
               <div class="w-12 bg-green-500 border border-green-700 transition-all duration-500" style={`height: ${incomeBarHeight}px;`}></div>
-              <span class="text-xs text-secondary mt-2">{lang === 'es' ? 'INGRESOS' : 'INCOME'}</span>
+              <span class="text-xs text-secondary mt-2">{t.label_incomes_upper}</span>
             </div>
             <div class="flex flex-col items-center w-24">
               <span class="text-red-500 text-xs font-bold mb-2">{formatCLP(totalExpense, currency)}</span>
               <div class="w-12 bg-red-500 border border-red-700 transition-all duration-500" style={`height: ${expenseBarHeight}px;`}></div>
-              <span class="text-xs text-secondary mt-2">{lang === 'es' ? 'GASTOS' : 'EXPENSES'}</span>
+              <span class="text-xs text-secondary mt-2">{t.label_expenses_upper}</span>
             </div>
           </div>
         )}
@@ -174,7 +174,7 @@ const maxMonthly = Math.max(...monthlyData.map(m => m.total)) || 1;
       </div>
       <div class="terminal-body font-mono text-sm flex flex-col justify-between h-[250px] overflow-y-auto">
         <h2 class="text-xs uppercase text-secondary mb-4">
-          {lang === 'es' ? '[ DISTRIBUCION_DE_GASTOS ]' : '[ EXPENSE_DISTRIBUTION ]'}
+          {t.chart_distribution}
         </h2>
         
         {categoryData.length === 0 ? (
@@ -207,9 +207,7 @@ const maxMonthly = Math.max(...monthlyData.map(m => m.total)) || 1;
     <div>
       <h1 class="text-xl text-main font-bold">> chart --analyze --evolution</h1>
       <p class="text-xs text-secondary mt-1">
-        {lang === 'es' 
-          ? `Evolución de ${selectedType === 'income' ? 'ingresos' : 'gastos'}.`
-          : `Evolution of ${selectedType === 'income' ? 'incomes' : 'expenses'}.`}
+        {t.chart_evolution} {selectedType === 'income' ? t.ingresos : t.gastos}.
       </p>
     </div>
     <div class="flex gap-2 text-xs font-bold font-mono">
@@ -229,7 +227,7 @@ const maxMonthly = Math.max(...monthlyData.map(m => m.total)) || 1;
     </div>
     <div class="terminal-body space-y-4">
       <h2 class="text-xs uppercase text-secondary">
-        {lang === 'es' ? `[ ${typeLabel}_DIARIO ]` : `[ DAILY_${typeLabel} ]`}
+        {t.chart_daily.replace('%s', typeLabel)}
       </h2>
       
       {maxDaily === 1 ? (
@@ -253,7 +251,7 @@ const maxMonthly = Math.max(...monthlyData.map(m => m.total)) || 1;
               return (
                 <g class="group cursor-pointer">
                   <circle cx={x} cy={y} r="4" fill="#080c14" stroke="#1dc7b5" stroke-width="2" />
-                  <title>{lang === 'es' ? `Día ${d.day}: ${formatCLP(d.total, currency)}` : `Day ${d.day}: ${formatCLP(d.total, currency)}`}</title>
+                  <title>{t.day_n.replace('%s', String(d.day))}: {formatCLP(d.total, currency)}</title>
                 </g>
               );
             })}
@@ -266,9 +264,9 @@ const maxMonthly = Math.max(...monthlyData.map(m => m.total)) || 1;
             </defs>
           </svg>
           <div class="flex justify-between text-[10px] text-secondary mt-2 px-4 border-t border-border-subtle pt-2">
-            <span>{lang === 'es' ? 'Día 1' : 'Day 1'}</span>
-            <span>{lang === 'es' ? `Día ${Math.round(daysInMonth / 2)}` : `Day ${Math.round(daysInMonth / 2)}`}</span>
-            <span>{lang === 'es' ? `Día ${daysInMonth}` : `Day ${daysInMonth}`}</span>
+            <span>{t.day_1}</span>
+            <span>{t.day_n.replace('%s', String(Math.round(daysInMonth / 2)))}</span>
+            <span>{t.day_n.replace('%s', String(daysInMonth))}</span>
           </div>
         </div>
       )}
@@ -284,7 +282,7 @@ const maxMonthly = Math.max(...monthlyData.map(m => m.total)) || 1;
       </div>
       <div class="terminal-body space-y-4 h-[250px] flex flex-col justify-between">
         <h2 class="text-xs uppercase text-secondary">
-          {lang === 'es' ? `[ ${typeLabel}_SEMANAL ]` : `[ WEEKLY_${typeLabel} ]`}
+          {t.chart_weekly.replace('%s', typeLabel)}
         </h2>
         
         {maxWeekly === 1 ? (
@@ -315,7 +313,7 @@ const maxMonthly = Math.max(...monthlyData.map(m => m.total)) || 1;
       </div>
       <div class="terminal-body space-y-4 h-[250px] flex flex-col justify-between">
         <h2 class="text-xs uppercase text-secondary">
-          {lang === 'es' ? `[ ${typeLabel}_MENSUAL ]` : `[ YEARLY_${typeLabel} ]`}
+          {t.chart_monthly.replace('%s', typeLabel)}
         </h2>
         
         {maxMonthly === 1 ? (

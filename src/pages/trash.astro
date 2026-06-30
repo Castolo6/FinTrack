@@ -1,0 +1,151 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Sidebar from '../components/Sidebar.astro';
+import { getI18n } from '../lib/i18n';
+import { db } from '../lib/db';
+
+const user = Astro.locals.user;
+if (!user) {
+  return Astro.redirect('/login');
+}
+
+const { lang, t } = getI18n(Astro);
+
+// Cargar transacciones eliminadas
+const deletedTransactions = db.prepare(`
+  SELECT t.id, t.amount, t.type, t.date, t.description, t.deleted_at, 
+         c.name as category_name, c.icon as category_icon, c.color as category_color,
+         a.name as account_name
+  FROM transactions t
+  LEFT JOIN categories c ON t.category_id = c.id
+  LEFT JOIN accounts a ON t.account_id = a.id
+  WHERE t.deleted_at IS NOT NULL
+  ORDER BY t.deleted_at DESC
+`).all() as Array<{
+  id: string; amount: number; type: string; date: string; description: string | null; deleted_at: string;
+  category_name: string; category_icon: string; category_color: string; account_name: string;
+}>;
+
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(amount);
+};
+---
+
+<Layout title={"FinTrack - " + (lang === 'es' ? 'Papelera' : 'Trash')}>
+  <div class="flex flex-col md:flex-row min-h-screen">
+    
+    <Sidebar active="trash" username={user.username} />
+
+    <main class="flex-1 p-6 space-y-6 overflow-y-auto">
+      
+      <div class="border-b border-border-subtle pb-4">
+        <h1 class="text-xl font-mono text-main font-bold">{lang === 'es' ? 'Papelera de Reciclaje' : 'Recycle Bin'}</h1>
+        <p class="text-xs text-secondary font-mono mt-1">
+          {lang === 'es' ? 'Restaura transacciones eliminadas accidentalmente.' : 'Restore accidentally deleted transactions.'}
+        </p>
+      </div>
+
+      <div class="terminal-window m-0">
+        <div class="terminal-header">
+          <span>{`> select * from trash where type='transaction'`}</span>
+        </div>
+        <div class="terminal-body p-0">
+          
+          {deletedTransactions.length === 0 ? (
+            <div class="p-8 text-center text-secondary font-mono text-sm border-t border-border-subtle/30">
+              <span class="block text-4xl mb-2 opacity-50">🗑️</span>
+              {lang === 'es' ? 'La papelera está vacía.' : 'The trash is empty.'}
+            </div>
+          ) : (
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="border-b border-border-subtle bg-surface-light">
+                    <th class="p-3 text-xs font-mono text-secondary font-normal w-12 text-center">#</th>
+                    <th class="p-3 text-xs font-mono text-secondary font-normal">{lang === 'es' ? 'Fecha Eliminación' : 'Deleted At'}</th>
+                    <th class="p-3 text-xs font-mono text-secondary font-normal">{lang === 'es' ? 'Categoría' : 'Category'}</th>
+                    <th class="p-3 text-xs font-mono text-secondary font-normal">{lang === 'es' ? 'Monto' : 'Amount'}</th>
+                    <th class="p-3 text-xs font-mono text-secondary font-normal text-right">{lang === 'es' ? 'Acción' : 'Action'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deletedTransactions.map((tx, idx) => (
+                    <tr class="border-b border-border-subtle/30 hover:bg-surface-light transition-colors group">
+                      <td class="p-3 text-xs font-mono text-secondary text-center">{(idx + 1).toString().padStart(2, '0')}</td>
+                      <td class="p-3">
+                        <div class="text-xs text-main font-mono">{new Date(tx.deleted_at).toLocaleString()}</div>
+                        <div class="text-[10px] text-secondary font-mono truncate max-w-[200px]">{tx.description || tx.account_name}</div>
+                      </td>
+                      <td class="p-3">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold" style={`background-color: ${tx.category_color}15; color: ${tx.category_color}`}>
+                          <span>{tx.category_icon}</span>
+                          <span>{tx.category_name}</span>
+                        </span>
+                      </td>
+                      <td class="p-3 text-xs font-mono">
+                        <span class={tx.type === 'income' ? 'text-green-500' : tx.type === 'expense' ? 'text-red-500' : 'text-cyan-500'}>
+                          {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
+                        </span>
+                      </td>
+                      <td class="p-3 text-right">
+                        <button 
+                          class="btn-restore text-xs font-mono text-accent hover:text-white bg-accent/10 hover:bg-accent border border-accent/30 hover:border-accent px-3 py-1 rounded transition-colors"
+                          data-id={tx.id}
+                        >
+                          {lang === 'es' ? '[ RESTAURAR ]' : '[ RESTORE ]'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+        </div>
+      </div>
+
+    </main>
+  </div>
+</Layout>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const isEn = document.cookie.includes('lang=en');
+    
+    document.querySelectorAll('.btn-restore').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const target = e.target as HTMLButtonElement;
+        const id = target.getAttribute('data-id');
+        if (!id) return;
+
+        if (!confirm(isEn ? 'Restore this transaction and its balances?' : '¿Restaurar esta transacción y sus saldos?')) {
+          return;
+        }
+
+        const originalText = target.textContent;
+        target.textContent = '[ ... ]';
+        target.disabled = true;
+
+        try {
+          const res = await fetch('/api/trash/restore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, type: 'transaction' })
+          });
+
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error);
+          }
+
+          window.location.reload();
+        } catch (err: any) {
+          alert('Error: ' + err.message);
+          target.textContent = originalText;
+          target.disabled = false;
+        }
+      });
+    });
+  });
+</script>

@@ -44,7 +44,7 @@ export const POST: APIRoute = async ({ request, locals, cookies }) => {
     const budgets = budgetsList.map(b => {
       const spentResult = db.prepare(`
         SELECT SUM(amount) as total FROM transactions 
-        WHERE category_id = ? AND type = 'expense' AND date >= ? AND date <= ?
+        WHERE category_id = ? AND type = 'expense' AND date >= ? AND date <= ? AND deleted_at IS NULL
       `).get(b.category_id, startOfMonth, endOfMonth) as { total: number | null };
       const spent = spentResult?.total || 0;
       const percent = b.budget_limit > 0 ? Math.round((spent / b.budget_limit) * 100) : 0;
@@ -52,7 +52,7 @@ export const POST: APIRoute = async ({ request, locals, cookies }) => {
     });
 
     // C. Objetivos de ahorro (Bolsillos)
-    const goals = db.prepare('SELECT name, target_amount, current_amount, saving_platform, deadline FROM saving_goals').all() as Array<{
+    const goals = db.prepare('SELECT name, target_amount, current_amount, saving_platform, deadline FROM saving_goals WHERE deleted_at IS NULL').all() as Array<{
       name: string;
       target_amount: number;
       current_amount: number;
@@ -63,13 +63,13 @@ export const POST: APIRoute = async ({ request, locals, cookies }) => {
     // C2. Inversiones
     let investments: Array<{name: string; type: string; invested_amount: number; current_value: number; platform: string | null;}> = [];
     try {
-      investments = db.prepare('SELECT name, type, invested_amount, current_value, platform FROM investments').all() as typeof investments;
+      investments = db.prepare('SELECT name, type, invested_amount, current_value, platform FROM investments WHERE deleted_at IS NULL').all() as typeof investments;
     } catch(e) {}
 
     // C3. Créditos
     let credits: Array<{name: string; total_amount: number; remaining_amount: number; monthly_payment: number | null; interest_rate: number | null;}> = [];
     try {
-      credits = db.prepare('SELECT name, total_amount, remaining_amount, monthly_payment, interest_rate FROM credits').all() as typeof credits;
+      credits = db.prepare('SELECT name, total_amount, remaining_amount, monthly_payment, interest_rate FROM credits WHERE deleted_at IS NULL').all() as typeof credits;
     } catch(e) {}
 
     // D. Últimas transacciones (filtradas por mes actual, excepto para metas)
@@ -81,6 +81,7 @@ export const POST: APIRoute = async ({ request, locals, cookies }) => {
         FROM transactions t
         JOIN accounts a ON t.account_id = a.id
         JOIN categories c ON t.category_id = c.id
+        WHERE t.deleted_at IS NULL
         ORDER BY t.date DESC, t.created_at DESC
         LIMIT 50
       `).all() as Array<{
@@ -98,7 +99,7 @@ export const POST: APIRoute = async ({ request, locals, cookies }) => {
         FROM transactions t
         JOIN accounts a ON t.account_id = a.id
         JOIN categories c ON t.category_id = c.id
-        WHERE t.date >= ? AND t.date <= ?
+        WHERE t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
         ORDER BY t.date DESC, t.created_at DESC
       `).all(startOfMonth, endOfMonth) as Array<{
         date: string;
