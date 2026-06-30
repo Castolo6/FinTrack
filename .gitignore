@@ -34,3 +34,8 @@ fintrack.db-wal
 # VS Code settings
 .vscode/
 google-credentials.json
+
+# Ignorar copias de seguridad de dependencias y dist
+*_old
+*_old_*
+dist.old
