@@ -46,6 +46,10 @@ FinTrack es una aplicación web de servidor (Astro SSR) con arquitectura local-f
    * Exportación instantánea de la base de datos completa a un archivo JSON portable.
    * Restauración y mezcla de datos mediante carga de archivos de respaldo.
 
+8. **Navegación Móvil e Interfaz Responsiva**:
+   * Barra de navegación inferior dinámica (`MobileTabBar`) para accesibilidad rápida en smartphones.
+   * Diseño completamente adaptativo a cualquier tamaño de pantalla manteniendo la estética retro de consola.
+
 ---
 
 ## ⚙️ ¿Con qué lo hace? (Tecnologías)
