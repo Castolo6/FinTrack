@@ -69,21 +69,30 @@ Asegúrate de tener instalados:
 * **Node.js** v18 o superior.
 * **Ollama** ejecutándose de manera local (`ollama serve`).
 
-### 2. Configurar el Agente Moneypenny
-Asegúrate de haber descargado el modelo en Ollama:
+### 2. Configurar la IA Local (Gemma2) paso a paso
+Para habilitar las funciones de auditoría inteligente y análisis financiero, necesitas configurar Ollama con el modelo `gemma2`.
+1. Descarga e instala [Ollama](https://ollama.com/) en tu sistema.
+2. Abre tu terminal y ejecuta el comando para descargar el modelo:
+   ```bash
+   ollama pull gemma2:9b
+   ```
+3. Verifica que el modelo se haya instalado correctamente:
+   ```bash
+   ollama list
+   ```
+   *(Asegúrate de que `gemma2:9b` aparezca en la lista)*.
+4. Mantén Ollama en ejecución en segundo plano (`ollama serve` o abriendo la aplicación). FinTrack se conectará automáticamente a su API local.
 
-```bash
-# Descargar el modelo gemma2:9b en Ollama
-ollama pull gemma2:9b
-```
+### 3. Configurar Backups en Google Drive
+Para habilitar las copias de seguridad de tu base de datos local hacia la nube:
+1. Ve a la [Consola de Google Cloud](https://console.cloud.google.com/) y crea un nuevo proyecto.
+2. Habilita la **Google Drive API** dentro del panel "APIs y Servicios".
+3. Ve a "Credenciales" > "Crear credenciales" > "Cuenta de servicio".
+4. Dentro de la cuenta de servicio creada, genera una nueva clave (Key) en formato **JSON** y descárgala.
+5. Renombra ese archivo a `google-credentials.json` y colócalo en la raíz del proyecto (junto a `package.json`).
+6. Crea una carpeta en tu Google Drive personal para guardar los backups y **compártela** (con permisos de Editor) usando el correo electrónico de tu Cuenta de Servicio.
 
-Verifica que el modelo esté disponible localmente:
-```bash
-ollama list
-```
-*(Deberías ver `gemma2:9b` en la lista).*
-
-### 3. Levantar FinTrack
+### 4. Levantar FinTrack
 1. Clona el repositorio e ingresa a la carpeta del proyecto.
 2. Instala las dependencias de Node:
    ```bash
