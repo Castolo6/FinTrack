@@ -39,3 +39,6 @@ google-credentials.json
 *_old
 *_old_*
 dist.old
+
+# Deploy plan (local only)
+DEPLOY.md

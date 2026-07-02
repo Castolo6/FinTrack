@@ -17,7 +17,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       );
     }
 
-    const validTypes = ['cash', 'bank', 'credit_card', 'investment', 'other'];
+    const validTypes = ['cash', 'bank', 'credit_card', 'credit', 'investment', 'other'];
     if (!validTypes.includes(type)) {
       return new Response(
         JSON.stringify({ error: `Tipo de cuenta no válido. Debe ser uno de: ${validTypes.join(', ')}` }),
@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       db.prepare(`
         INSERT INTO accounts (id, name, type, balance, currency, credit_limit)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run(id, name.trim(), type, balance, currency, type === 'credit_card' ? credit_limit : 0);
+      `).run(id, name.trim(), type, balance, currency, (type === 'credit_card' || type === 'credit') ? credit_limit : 0);
 
       // 2. Si tiene saldo inicial, registrar transacción de apertura
       if (balance !== 0) {

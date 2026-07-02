@@ -1,6 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Sidebar from '../components/Sidebar.astro';
+import MobileTabBar from '../components/MobileTabBar.astro';
 import { getI18n } from '../lib/i18n';
 
 const user = Astro.locals.user;
@@ -11,10 +12,13 @@ const { lang, t } = getI18n(Astro);
   <div class="flex flex-col md:flex-row min-h-screen">
     
     <!-- Sidebar / Panel de Control -->
-    <Sidebar active="help" username={user?.username || 'admin'} />
+    <div class="hidden md:flex flex-shrink-0">
+      <Sidebar active="help" username={user?.username || 'admin'} />
+    </div>
+    <MobileTabBar active="help" />
 
     <!-- Main Content Area -->
-    <main class="flex-1 p-6 space-y-6 overflow-y-auto">
+    <main class="flex-1 p-6 pb-24 md:pb-6 space-y-6 overflow-y-auto">
       
       <!-- Top Title Command -->
       <div class="border-b border-border-subtle pb-4">
@@ -36,7 +40,7 @@ const { lang, t } = getI18n(Astro);
           <summary class="terminal-header list-none flex justify-between items-center">
             <span>[+] {t.help_dashboard_title}</span>
             <div class="flex gap-4">
-              <span class="text-muted-text">{t.module} 1 {t.of} 7</span>
+              <span class="text-muted-text">{t.module} 1 {t.of} 8</span>
               <span class="group-open:hidden">▼</span>
               <span class="hidden group-open:block">▲</span>
             </div>
@@ -54,7 +58,7 @@ const { lang, t } = getI18n(Astro);
           <summary class="terminal-header list-none flex justify-between items-center">
             <span>[+] {t.help_transactions_title}</span>
             <div class="flex gap-4">
-              <span class="text-muted-text">{t.module} 2 {t.of} 7</span>
+              <span class="text-muted-text">{t.module} 2 {t.of} 8</span>
               <span class="group-open:hidden">▼</span>
               <span class="hidden group-open:block">▲</span>
             </div>
@@ -72,7 +76,7 @@ const { lang, t } = getI18n(Astro);
           <summary class="terminal-header list-none flex justify-between items-center">
             <span>[+] {t.help_budgets_title}</span>
             <div class="flex gap-4">
-              <span class="text-muted-text">{t.module} 3 {t.of} 7</span>
+              <span class="text-muted-text">{t.module} 3 {t.of} 8</span>
               <span class="group-open:hidden">▼</span>
               <span class="hidden group-open:block">▲</span>
             </div>
@@ -90,7 +94,7 @@ const { lang, t } = getI18n(Astro);
           <summary class="terminal-header list-none flex justify-between items-center">
             <span>[+] {t.help_charts_title}</span>
             <div class="flex gap-4">
-              <span class="text-muted-text">{t.module} 4 {t.of} 7</span>
+              <span class="text-muted-text">{t.module} 4 {t.of} 8</span>
               <span class="group-open:hidden">▼</span>
               <span class="hidden group-open:block">▲</span>
             </div>
@@ -108,7 +112,7 @@ const { lang, t } = getI18n(Astro);
           <summary class="terminal-header list-none flex justify-between items-center">
             <span>[+] {t.help_goals_title}</span>
             <div class="flex gap-4">
-              <span class="text-muted-text">{t.module} 5 {t.of} 7</span>
+              <span class="text-muted-text">{t.module} 5 {t.of} 8</span>
               <span class="group-open:hidden">▼</span>
               <span class="hidden group-open:block">▲</span>
             </div>
@@ -126,7 +130,7 @@ const { lang, t } = getI18n(Astro);
           <summary class="terminal-header list-none flex justify-between items-center">
             <span>[+] {t.help_analysis_title}</span>
             <div class="flex gap-4">
-              <span class="text-muted-text">{t.module} 6 {t.of} 7</span>
+              <span class="text-muted-text">{t.module} 6 {t.of} 8</span>
               <span class="group-open:hidden">▼</span>
               <span class="hidden group-open:block">▲</span>
             </div>
@@ -144,7 +148,7 @@ const { lang, t } = getI18n(Astro);
           <summary class="terminal-header list-none flex justify-between items-center">
             <span>[+] {t.help_settings_title}</span>
             <div class="flex gap-4">
-              <span class="text-muted-text">{t.module} 7 {t.of} 7</span>
+              <span class="text-muted-text">{t.module} 7 {t.of} 8</span>
               <span class="group-open:hidden">▼</span>
               <span class="hidden group-open:block">▲</span>
             </div>
@@ -153,6 +157,24 @@ const { lang, t } = getI18n(Astro);
             <p class="text-secondary leading-relaxed">{t.help_settings_desc}</p>
             <ul class="list-disc pl-5 space-y-1 text-xs text-secondary">
               {t.help_settings_items.map(item => (<li>{item}</li>))}
+            </ul>
+          </div>
+        </details>
+
+        <!-- Formulas -->
+        <details class="group terminal-window m-0 cursor-pointer">
+          <summary class="terminal-header list-none flex justify-between items-center">
+            <span>[+] {t.help_formulas_title}</span>
+            <div class="flex gap-4">
+              <span class="text-muted-text">{t.module} 8 {t.of} 8</span>
+              <span class="group-open:hidden">▼</span>
+              <span class="hidden group-open:block">▲</span>
+            </div>
+          </summary>
+          <div class="terminal-body text-sm space-y-3 cursor-text">
+            <p class="text-secondary leading-relaxed">{t.help_formulas_desc}</p>
+            <ul class="list-disc pl-5 space-y-1 text-xs text-secondary">
+              {t.help_formulas_items.map(item => (<li>{item}</li>))}
             </ul>
           </div>
         </details>

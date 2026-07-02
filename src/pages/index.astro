@@ -4,6 +4,7 @@ import { db } from '../lib/db';
 import { formatCLP } from '../lib/utils';
 import FinanceCharts from '../components/FinanceCharts.astro';
 import Sidebar from '../components/Sidebar.astro';
+import MobileTabBar from '../components/MobileTabBar.astro';
 import { getI18n } from '../lib/i18n';
 
 const { lang, t } = getI18n(Astro);
@@ -12,8 +13,8 @@ const currency = Astro.cookies.get('currency')?.value || 'CLP';
 // Obtener usuario del middleware
 const user = Astro.locals.user;
 
-// 1. LIQUIDEZ (Dinero en cuentas, excluyendo tarjetas de crédito)
-const liquidityResult = db.prepare("SELECT SUM(balance) as total FROM accounts WHERE type != 'credit_card'").get() as { total: number | null };
+// 1. LIQUIDEZ (Dinero en cuentas, excluyendo tarjetas de crédito y líneas)
+const liquidityResult = db.prepare("SELECT SUM(balance) as total FROM accounts WHERE type NOT IN ('credit_card', 'credit')").get() as { total: number | null };
 const liquidity = liquidityResult?.total || 0;
 
 // 2. INVERSIONES Y AHORROS
@@ -34,7 +35,7 @@ try {
   totalDebt = debt?.total || 0;
 
   // Sumar la deuda de las tarjetas de crédito (saldos negativos)
-  const ccDebt = db.prepare("SELECT SUM(ABS(balance)) as total FROM accounts WHERE type = 'credit_card' AND balance < 0").get() as { total: number | null };
+  const ccDebt = db.prepare("SELECT SUM(ABS(balance)) as total FROM accounts WHERE type IN ('credit_card', 'credit') AND balance < 0").get() as { total: number | null };
   totalDebt += (ccDebt?.total || 0);
 } catch (e) {}
 
@@ -151,10 +152,13 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
   <div class="flex flex-col md:flex-row min-h-screen">
     
     <!-- Sidebar / Panel de Control -->
-    <Sidebar active="dashboard" username={user?.username || 'admin'} />
+    <div class="hidden md:flex flex-shrink-0">
+      <Sidebar active="dashboard" username={user?.username || 'admin'} />
+    </div>
+    <MobileTabBar active="dashboard" />
 
     <!-- Main Content Area -->
-    <main class="flex-1 p-6 space-y-6 overflow-y-auto">
+    <main class="flex-1 p-6 pb-24 md:pb-6 space-y-6 overflow-y-auto">
       
       <!-- Top Title Command & Time Filter -->
       <div class="border-b border-border-subtle pb-4 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
@@ -222,6 +226,9 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
         <button id="tab-btn-operations" class="px-4 py-2 border border-border-main text-main hover:bg-surface-main transition-colors cursor-pointer">
           {t.tab_operations}
         </button>
+        <button id="tab-btn-strategy" class="px-4 py-2 border border-border-main text-main hover:bg-surface-main transition-colors cursor-pointer">
+          {t.strategy || '[ ESTRATEGIA ]'}
+        </button>
       </div>
 
       <!-- TAB 1: OVERVIEW -->
@@ -279,12 +286,13 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
                           {acc.type === 'cash' ? t.option_cash : 
                            acc.type === 'bank' ? t.option_bank : 
                            acc.type === 'credit_card' ? t.option_credit_card : 
+                           acc.type === 'credit' ? t.option_credit : 
                            acc.type === 'investment' ? t.option_investment : 
                            acc.type === 'other' ? t.option_other : acc.type}
                         </div>
                       </div>
                       <div class="text-right">
-                        {acc.type === 'credit_card' ? (
+                        {acc.type === 'credit_card' || acc.type === 'credit' ? (
                           <>
                             <div class="text-xs text-main">Cupo total: {formatCLP(acc.credit_limit || 0, currency)}</div>
                             <div class="text-xs text-red-500">Usado: {formatCLP(Math.abs(acc.balance), currency)}</div>
@@ -374,12 +382,22 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
                       <option value="expense">{t.type_expense || 'GASTO'}</option>
                       <option value="allocation">{t.type_allocation || 'ASIGNACIÓN (→)'}</option>
                       <option value="income">{t.type_income || 'INGRESO'}</option>
+                      <option value="transfer">{t.option_transfer}</option>
                     </select>
                   </div>
                   
                   <div>
                     <label class="block text-secondary mb-1">{t.label_account}</label>
                     <select id="tx-account" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                      {accounts.map(acc => (
+                        <option value={acc.id}>{acc.name} ({formatCLP(acc.balance, currency)})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div id="tx-destination-container" class="hidden">
+                    <label class="block text-secondary mb-1">{t.label_destination_account}</label>
+                    <select id="tx-destination-account" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
                       {accounts.map(acc => (
                         <option value={acc.id}>{acc.name} ({formatCLP(acc.balance, currency)})</option>
                       ))}
@@ -445,6 +463,7 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
                     <option value="cash">{t.option_cash}</option>
                     <option value="bank">{t.option_bank}</option>
                     <option value="credit_card">{t.option_credit_card}</option>
+                    <option value="credit">{t.option_credit}</option>
                     <option value="investment">{t.option_investment}</option>
                     <option value="other">{t.option_other}</option>
                   </select>
@@ -465,6 +484,117 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
         </div>
       </div>
 
+      <!-- TAB 4: STRATEGY 50/30/20 -->
+      <div id="tab-content-strategy" class="space-y-6 hidden">
+        <!-- Diagram Area -->
+        <div class="border border-border-main p-4 bg-surface-main">
+          <div class="text-main font-bold mb-4">[ DIAGRAMA DE DISTRIBUCIÓN ]</div>
+          <div class="flex flex-col md:flex-row gap-4 h-auto md:h-32">
+            
+            <!-- 50% Necesidades -->
+            <div class="flex-1 border border-border-subtle bg-bg flex flex-col justify-center items-center relative overflow-hidden group">
+              <div class="absolute inset-0 bg-accent/10 transition-transform origin-left w-1/2 group-hover:w-full duration-500 ease-out z-0 hidden md:block"></div>
+              <div class="relative z-10 text-center">
+                <span class="text-3xl font-bold text-accent block">50%</span>
+                <span class="text-xs text-main uppercase font-bold mt-1 block">
+                  {lang === 'es' ? 'NECESIDADES' : 'NEEDS'}
+                </span>
+              </div>
+              <div class="relative z-10 text-[10px] text-secondary text-center mt-2 px-2">
+                {lang === 'es' ? 'Arriendo, Comida, Cuentas Básicas, Pago mínimo de deuda' : 'Rent, Food, Utilities, Minimum debt payments'}
+              </div>
+            </div>
+
+            <!-- 30% Deseos -->
+            <div class="flex-1 border border-border-subtle bg-bg flex flex-col justify-center items-center relative overflow-hidden group">
+              <div class="absolute inset-0 bg-yellow-500/10 transition-transform origin-left w-[30%] group-hover:w-full duration-500 ease-out z-0 hidden md:block"></div>
+              <div class="relative z-10 text-center">
+                <span class="text-3xl font-bold text-yellow-500 block">30%</span>
+                <span class="text-xs text-main uppercase font-bold mt-1 block">
+                  {lang === 'es' ? 'DESEOS' : 'WANTS'}
+                </span>
+              </div>
+              <div class="relative z-10 text-[10px] text-secondary text-center mt-2 px-2">
+                {lang === 'es' ? 'Salidas, Entretenimiento, Suscripciones, Viajes' : 'Dining out, Entertainment, Subscriptions, Travel'}
+              </div>
+            </div>
+
+            <!-- 20% Futuro -->
+            <div class="flex-1 border border-border-subtle bg-bg flex flex-col justify-center items-center relative overflow-hidden group">
+              <div class="absolute inset-0 bg-green-500/10 transition-transform origin-left w-[20%] group-hover:w-full duration-500 ease-out z-0 hidden md:block"></div>
+              <div class="relative z-10 text-center">
+                <span class="text-3xl font-bold text-green-500 block">20%</span>
+                <span class="text-xs text-main uppercase font-bold mt-1 block">
+                  {lang === 'es' ? 'FUTURO' : 'FUTURE'}
+                </span>
+              </div>
+              <div class="relative z-10 text-[10px] text-secondary text-center mt-2 px-2">
+                {lang === 'es' ? 'Ahorro, Inversiones, Pago de deudas extra' : 'Savings, Investments, Extra debt payments'}
+              </div>
+            </div>
+
+          </div>
+          
+          <!-- CSS ASCII representation for fun -->
+          <div class="mt-6 text-xs font-mono text-secondary">
+            <div class="mb-1">{lang === 'es' ? 'Vista de Barra del Sistema:' : 'System Bar View:'}</div>
+            <div class="flex h-6 border border-border-subtle w-full max-w-2xl">
+              <div class="bg-accent/40 h-full flex items-center justify-center text-[10px] text-bg font-bold border-r border-bg" style="width: 50%;">50%</div>
+              <div class="bg-yellow-500/40 h-full flex items-center justify-center text-[10px] text-bg font-bold border-r border-bg" style="width: 30%;">30%</div>
+              <div class="bg-green-500/40 h-full flex items-center justify-center text-[10px] text-bg font-bold" style="width: 20%;">20%</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Description Markdown Style -->
+        <div class="terminal-window m-0 border border-border-main bg-surface-main">
+          <div class="terminal-header">
+            <span>{lang === 'es' ? 'manual — 50/30/20' : 'manual — 50/30/20'}</span>
+          </div>
+          <div class="terminal-body bg-bg text-main font-mono text-sm p-4 md:p-6 overflow-y-auto markdown-body space-y-4">
+            
+            <h2 class="text-accent border-b border-border-subtle pb-2 mb-4 font-bold">¿Qué es el Método 50/30/20?</h2>
+            <p class="text-secondary leading-relaxed">
+              El método 50/30/20 es una regla de oro de las finanzas personales diseñada para simplificar la gestión del presupuesto. Divide tus ingresos netos (después de impuestos) en solo tres grandes categorías, eliminando la necesidad de rastrear cada centavo en micro-categorías.
+            </p>
+
+            <h3 class="text-main font-bold mt-6 mb-2">[ 1. EL 50%: NECESIDADES (Lo esencial para vivir) ]</h3>
+            <p class="text-secondary leading-relaxed">
+              Representa el límite máximo de lo que deberías gastar en tus obligaciones ineludibles. Son las cosas que, si pierdes tu trabajo hoy, seguirías teniendo que pagar.
+            </p>
+            <ul class="list-disc list-inside text-secondary ml-4 mt-2 space-y-1">
+              <li><strong>Ejemplos:</strong> Arriendo/Dividendo, cuentas básicas, alimentación, transporte, seguros.</li>
+              <li><strong>Regla de oro:</strong> Si esta categoría supera el 50%, tu estilo de vida base es demasiado caro para tus ingresos actuales.</li>
+            </ul>
+
+            <h3 class="text-main font-bold mt-6 mb-2">[ 2. EL 30%: DESEOS (Calidad de vida) ]</h3>
+            <p class="text-secondary leading-relaxed">
+              Es el dinero destinado a disfrutar el presente. Reconoce psicológicamente que necesitamos diversión para mantener un presupuesto a largo plazo sin frustrarnos.
+            </p>
+            <ul class="list-disc list-inside text-secondary ml-4 mt-2 space-y-1">
+              <li><strong>Ejemplos:</strong> Restaurantes, cine, suscripciones (Netflix, Spotify), viajes, hobbies.</li>
+              <li><strong>Regla de oro:</strong> Es la categoría más fácil de recortar si hay una emergencia financiera.</li>
+            </ul>
+
+            <h3 class="text-main font-bold mt-6 mb-2">[ 3. EL 20%: FUTURO (Ahorro, Inversión y Deudas) ]</h3>
+            <p class="text-secondary leading-relaxed">
+              Es la categoría más importante para tu crecimiento patrimonial y tu tranquilidad mental. Este dinero debe pagarse a "ti mismo" primero, idealmente de forma automática.
+            </p>
+            
+            <div class="mt-4 p-4 border border-border-subtle bg-surface-main">
+              <h4 class="text-main font-bold mb-2">Fases de Ejecución del 20%:</h4>
+              <ol class="list-decimal list-inside text-secondary space-y-2 ml-2">
+                <li><strong>Fase 1 - Colchón Inicial:</strong> Crear un fondo de emergencia pequeño (ej. $1.000 USD / $1.000.000 CLP).</li>
+                <li><strong>Fase 2 - Matar Deudas:</strong> Prepagar agresivamente tarjetas y créditos de consumo (usar el 20% completo para esto, aparte del pago mínimo en el 50%).</li>
+                <li><strong>Fase 3 - Fondo Robusto:</strong> Ampliar el fondo de emergencia para cubrir 3 a 6 meses de tus necesidades fijas.</li>
+                <li><strong>Fase 4 - Inversión Pura:</strong> Invertir a largo plazo (ETFs, fondos indexados, APV) para generar riqueza real.</li>
+              </ol>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
 </Layout>
@@ -481,36 +611,41 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
   const btnOverview = document.getElementById('tab-btn-overview');
   const btnCharts = document.getElementById('tab-btn-charts');
   const btnOperations = document.getElementById('tab-btn-operations');
+  const btnStrategy = document.getElementById('tab-btn-strategy');
   
   const contentOverview = document.getElementById('tab-content-overview');
   const contentCharts = document.getElementById('tab-content-charts');
   const contentOperations = document.getElementById('tab-content-operations');
+  const contentStrategy = document.getElementById('tab-content-strategy');
 
   const activeClass = 'px-4 py-2 bg-border-main text-bg border-border-main transition-colors cursor-pointer';
   const inactiveClass = 'px-4 py-2 border border-border-main text-main hover:bg-surface-main transition-colors cursor-pointer';
 
   function switchTab(activeBtn, activeContent) {
-    if(!btnOverview || !btnCharts || !btnOperations) return;
+    if(!btnOverview || !btnCharts || !btnOperations || !btnStrategy) return;
     
     // Reset buttons
     btnOverview.className = inactiveClass;
     btnCharts.className = inactiveClass;
     btnOperations.className = inactiveClass;
+    btnStrategy.className = inactiveClass;
     
     // Hide all contents
     contentOverview.classList.add('hidden');
     contentCharts.classList.add('hidden');
     contentOperations.classList.add('hidden');
+    contentStrategy.classList.add('hidden');
     
     // Activate selected
     activeBtn.className = activeClass;
     activeContent.classList.remove('hidden');
   }
 
-  if (btnOverview && btnCharts && btnOperations) {
+  if (btnOverview && btnCharts && btnOperations && btnStrategy) {
     btnOverview.addEventListener('click', () => switchTab(btnOverview, contentOverview));
     btnCharts.addEventListener('click', () => switchTab(btnCharts, contentCharts));
     btnOperations.addEventListener('click', () => switchTab(btnOperations, contentOperations));
+    btnStrategy.addEventListener('click', () => switchTab(btnStrategy, contentStrategy));
   }
 
   // Formularios lógicas (Cuentas y Transacciones)
@@ -525,6 +660,8 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
   const groupAllocation = document.getElementById('group-allocation');
   const groupIncome = document.getElementById('group-income');
   const categorySelect = document.getElementById('tx-category') as HTMLSelectElement;
+  const destContainer = document.getElementById('tx-destination-container');
+  const destSelect = document.getElementById('tx-destination-account');
 
   if (txTypeSelect && categorySelect) {
     txTypeSelect.addEventListener('change', (e) => {
@@ -534,14 +671,33 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
       groupAllocation?.classList.add('hidden');
       groupIncome?.classList.add('hidden');
 
+      if (destContainer) {
+        if (type === 'transfer') {
+          destContainer.classList.remove('hidden');
+          if (destSelect) (destSelect as HTMLSelectElement).required = true;
+        } else {
+          destContainer.classList.add('hidden');
+          if (destSelect) (destSelect as HTMLSelectElement).required = false;
+        }
+      }
+
       if (type === 'expense') {
         groupExpense?.classList.remove('hidden');
         if (groupExpense?.firstElementChild) {
           categorySelect.value = (groupExpense.firstElementChild as HTMLOptionElement).value;
         }
-      } else if (type === 'allocation') {
+      } else if (type === 'allocation' || type === 'transfer') {
         groupAllocation?.classList.remove('hidden');
-        if (groupAllocation?.firstElementChild) {
+        let pagoOption = null;
+        if (type === 'transfer' && groupAllocation) {
+          const options = groupAllocation.querySelectorAll('option');
+          options.forEach(opt => {
+            if (opt.textContent?.toLowerCase().includes('pago')) pagoOption = opt;
+          });
+        }
+        if (pagoOption) {
+          categorySelect.value = pagoOption.value;
+        } else if (groupAllocation?.firstElementChild) {
           categorySelect.value = (groupAllocation.firstElementChild as HTMLOptionElement).value;
         }
       } else if (type === 'income') {
@@ -560,9 +716,13 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
 
   if (accTypeSelect && accLimitContainer) {
     accTypeSelect.addEventListener('change', (e) => {
-      if ((e.target as HTMLSelectElement).value === 'credit_card') {
+      const type = (e.target as HTMLSelectElement).value;
+      if (type === 'credit_card') {
         accLimitContainer.classList.remove('hidden');
         if (labelAccBalance) labelAccBalance.textContent = 'Deuda Actual (Ingresa lo que debes)';
+      } else if (type === 'credit') {
+        accLimitContainer.classList.add('hidden');
+        if (labelAccBalance) labelAccBalance.textContent = 'Cupo Aprobado (Límite Total)';
       } else {
         accLimitContainer.classList.add('hidden');
         if (labelAccBalance) labelAccBalance.textContent = 'Saldo Actual';
@@ -580,10 +740,12 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
       const name = (document.getElementById('acc-name') as HTMLInputElement).value;
       const type = (document.getElementById('acc-type') as HTMLSelectElement).value;
       let balance = parseFloat((document.getElementById('acc-balance') as HTMLInputElement).value || '0');
-      const credit_limit = parseFloat((document.getElementById('acc-limit') as HTMLInputElement)?.value || '0');
+      let credit_limit = parseFloat((document.getElementById('acc-limit') as HTMLInputElement)?.value || '0');
 
-      // Si es tarjeta de crédito y ponen la deuda en positivo, la invertimos automáticamente
-      if (type === 'credit_card' && balance > 0) {
+      if (type === 'credit') {
+        credit_limit = balance;
+        balance = 0;
+      } else if (type === 'credit_card' && balance > 0) {
         balance = -balance;
       }
 
@@ -614,6 +776,7 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
 
       const type = (document.getElementById('tx-type') as HTMLSelectElement).value;
       const account_id = (document.getElementById('tx-account') as HTMLSelectElement).value;
+      const destination_account_id = type === 'transfer' ? (document.getElementById('tx-destination-account') as HTMLSelectElement).value : undefined;
       const category_id = (document.getElementById('tx-category') as HTMLSelectElement).value;
       const amount = parseFloat((document.getElementById('tx-amount') as HTMLInputElement).value);
       const date = (document.getElementById('tx-date') as HTMLInputElement).value;
@@ -623,7 +786,7 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
         const res = await fetch('/api/transactions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type, account_id, category_id, amount, date, description })
+          body: JSON.stringify({ type, account_id, category_id, amount, date, description, destination_account_id })
         });
         if (!res.ok) {
            const errData = await res.json();
@@ -662,6 +825,17 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
       }
     });
   });
+
+  // Auto-open modal si viene redirigido desde la barra de navegación móvil
+  if (window.location.search.includes('add=true')) {
+    const addTxBtn = document.getElementById('tab-btn-operations');
+    if (addTxBtn) {
+      addTxBtn.click();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Limpiar la URL sin recargar la página
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }
 
   });
 </script>

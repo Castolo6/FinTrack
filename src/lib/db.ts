@@ -39,7 +39,7 @@ export function initDatabase() {
     CREATE TABLE IF NOT EXISTS accounts (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        type TEXT CHECK(type IN ('cash', 'bank', 'credit_card', 'investment', 'other')) NOT NULL,
+        type TEXT CHECK(type IN ('cash', 'bank', 'credit_card', 'credit', 'investment', 'other')) NOT NULL,
         balance REAL NOT NULL DEFAULT 0.0,
         currency TEXT NOT NULL DEFAULT 'CLP',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -99,7 +99,7 @@ export function initDatabase() {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         platform TEXT,
-        type TEXT CHECK(type IN ('fund', 'stock', 'crypto', 'deposit', 'other')) NOT NULL DEFAULT 'other',
+        type TEXT CHECK(type IN ('fund', 'stock', 'crypto', 'deposit', 'real_estate', 'vehicle', 'other')) NOT NULL DEFAULT 'other',
         invested_amount REAL NOT NULL DEFAULT 0.0,
         current_value REAL NOT NULL DEFAULT 0.0,
         currency TEXT NOT NULL DEFAULT 'CLP',
@@ -254,3 +254,55 @@ function migrateToAllocation() {
 // Ejecutar inicialización al cargar el módulo
 initDatabase();
 migrateToAllocation();
+
+/**
+ * Migración: Actualiza la tabla investments para permitir tipos 'real_estate' y 'vehicle'
+ */
+function migrateInvestmentsTypes() {
+  try {
+    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='investments'").get() as { sql: string } | undefined;
+    
+    if (tableInfo && tableInfo.sql.includes("('fund', 'stock', 'crypto', 'deposit', 'other')")) {
+      db.transaction(() => {
+        // Deshabilitar momentáneamente foreign keys para poder recrear
+        db.pragma('foreign_keys = OFF');
+        
+        // Crear nueva tabla con la restricción actualizada
+        db.exec(`
+          CREATE TABLE investments_new (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              platform TEXT,
+              type TEXT CHECK(type IN ('fund', 'stock', 'crypto', 'deposit', 'real_estate', 'vehicle', 'other')) NOT NULL DEFAULT 'other',
+              invested_amount REAL NOT NULL DEFAULT 0.0,
+              current_value REAL NOT NULL DEFAULT 0.0,
+              currency TEXT NOT NULL DEFAULT 'CLP',
+              start_date TEXT,
+              notes TEXT,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              source_account_id TEXT,
+              deleted_at TIMESTAMP NULL
+          );
+        `);
+        
+        // Copiar datos existentes
+        db.exec(`INSERT INTO investments_new SELECT * FROM investments;`);
+        
+        // Eliminar tabla vieja
+        db.exec(`DROP TABLE investments;`);
+        
+        // Renombrar nueva tabla
+        db.exec(`ALTER TABLE investments_new RENAME TO investments;`);
+        
+        // Reactivar foreign keys
+        db.pragma('foreign_keys = ON');
+        
+        console.log('✅ Tabla investments migrada exitosamente (tipos real_estate y vehicle permitidos).');
+      })();
+    }
+  } catch (error: any) {
+    console.error('⚠️ Error en migración migrateInvestmentsTypes:', error.message);
+  }
+}
+
+migrateInvestmentsTypes();

@@ -9,6 +9,7 @@ export const translations = {
     budgets: '[PRESUPUESTOS]',
     analysis: '[ANALISIS]',
     settings: '[RESPALDOS]',
+    strategy: '[ESTRATEGIA]',
     trash: '[PAPELERA]',
     help: '[AYUDA]',
     user: 'USUARIO',
@@ -55,13 +56,16 @@ export const translations = {
     option_expense: 'GASTO (-)',
     option_income: 'INGRESO (+)',
     option_allocation: 'ASIGNACIÓN (→)',
+    option_transfer: 'PAGO TARJETA / TRANSFERENCIA',
     btn_register: '[ REGISTRAR ]',
     label_acc_name: 'NOMBRE CUENTA',
     label_acc_type: 'TIPO CUENTA',
     label_acc_balance: 'SALDO INICIAL',
+    label_destination_account: 'CUENTA DESTINO / PAGO',
     option_cash: 'EFECTIVO',
     option_bank: 'BANCO',
     option_credit_card: 'TARJETA CRÉDITO',
+    option_credit: 'LÍNEA DE CONSUMO',
     option_investment: 'INVERSIONES',
     option_other: 'OTRO',
     btn_create_account: '[ CREAR_CUENTA ]',
@@ -312,6 +316,14 @@ export const translations = {
       'Exportación: Descarga instantánea de la base de datos completa de transacciones, presupuestos, cuentas y objetivos a un archivo JSON portable.',
       'Importación y Fusión: Carga de respaldos previos. Cuenta con lógica inteligente para combinar datos existentes en lugar de sobreescribirlos de manera destructiva.',
       'Estado del Sistema: Indicadores interactivos sobre la conectividad del servidor local de Ollama y disponibilidad del modelo Moneypenny.'
+    ],
+    help_formulas_title: '[FÓRMULAS] - Motor de Cálculo',
+    help_formulas_desc: 'El sistema utiliza aritmética financiera estándar para derivar el patrimonio neto y la liquidez real. Las fórmulas se calculan en tiempo real.',
+    help_formulas_items: [
+      'Patrimonio Neto: (Liquidez + Total Ahorros + Valor Actual de Inversiones) - (Créditos Restantes + Deuda en Tarjetas de Crédito). Representa tu riqueza real.',
+      'Liquidez: Suma de todos los balances positivos en tus cuentas corrientes o vista. Excluye estrictamente las cuentas de tipo crédito.',
+      'Total Pasivos (Deuda): La sumatoria de las cuotas o saldos restantes de todos tus créditos sumado a cualquier saldo negativo en tus tarjetas.',
+      'Tasa de Ahorro: 100 * (Ingresos Mensuales - Gastos Mensuales) / Ingresos Mensuales. Define qué porcentaje de tu flujo de caja retienes cada mes.'
     ]
   },
   en: {
@@ -322,6 +334,7 @@ export const translations = {
     budgets: '[BUDGETS]',
     analysis: '[AI ANALYSIS]',
     settings: '[BACKUPS]',
+    strategy: '[STRATEGY]',
     trash: '[TRASH]',
     help: '[HELP]',
     user: 'USER',
@@ -368,13 +381,16 @@ export const translations = {
     option_expense: 'EXPENSE (-)',
     option_income: 'INCOME (+)',
     option_allocation: 'ALLOCATION (→)',
+    option_transfer: 'TRANSFER / CARD PAYMENT',
     btn_register: '[ REGISTER ]',
     label_acc_name: 'ACCOUNT NAME',
     label_acc_type: 'ACCOUNT TYPE',
     label_acc_balance: 'INITIAL BALANCE',
+    label_destination_account: 'DESTINATION ACCOUNT',
     option_cash: 'CASH',
     option_bank: 'BANK',
     option_credit_card: 'CREDIT CARD',
+    option_credit: 'CONSUMER LINE',
     option_investment: 'INVESTMENTS',
     option_other: 'OTHER',
     btn_create_account: '[ CREATE_ACCOUNT ]',
@@ -622,9 +638,17 @@ export const translations = {
     help_settings_title: '[BACKUPS] - Utilities & Maintenance',
     help_settings_desc: 'Technical panel for data configuration and information sovereignty safeguard.',
     help_settings_items: [
-      'Export: Download a complete copy of transactions, budgets, accounts and goals to a portable JSON file.',
-      'Import and Merge: Load previous backups. Includes intelligent logic to combine existing data instead of destructively overwriting.',
-      'System Status: Interactive indicators on local Ollama server connectivity and Moneypenny model availability.'
+      'Export: Instant download of the complete database of transactions, budgets, accounts, and goals to a portable JSON file.',
+      'Import & Merge: Upload previous backups. Features smart logic to merge existing data instead of destructively overwriting it.',
+      'System Status: Interactive indicators on the connectivity of the local Ollama server and availability of the Moneypenny model.'
+    ],
+    help_formulas_title: '[FORMULAS] - Calculation Engine',
+    help_formulas_desc: 'The system uses standard financial arithmetic to derive net worth and real liquidity. Formulas execute in real-time.',
+    help_formulas_items: [
+      'Net Worth: (Liquidity + Total Savings + Current Value of Investments) - (Remaining Credits + Debt in Credit Cards). Represents your true wealth.',
+      'Liquidity: Sum of all positive balances in your checking or cash accounts. Strictly excludes credit cards and lines of credit.',
+      'Total Liabilities (Debt): The sum of remaining balances of all your credits plus any negative balance consumed on your credit cards.',
+      'Savings Rate: 100 * (Monthly Income - Monthly Expenses) / Monthly Income. Defines what percentage of your monthly cash flow you retain.'
     ]
   }
 };

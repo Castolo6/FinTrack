@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import { db } from '../lib/db';
 import { formatCLP } from '../lib/utils';
 import Sidebar from '../components/Sidebar.astro';
+import MobileTabBar from '../components/MobileTabBar.astro';
 import { getI18n } from '../lib/i18n';
 
 const user = Astro.locals.user;
@@ -82,16 +83,31 @@ const creditsWithProgress = credits.map(c => {
 });
 
 // Cuentas para operaciones
-const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY name ASC').all() as Array<{
-  id: string; name: string; balance: number;
+const accounts = db.prepare('SELECT id, name, type, balance FROM accounts ORDER BY name ASC').all() as Array<{
+  id: string; name: string; type: string; balance: number;
 }>;
+
+// Cálculos de Resumen
+const liquidityResult = db.prepare("SELECT SUM(balance) as total FROM accounts WHERE type NOT IN ('credit_card', 'credit')").get() as { total: number | null };
+const liquidity = liquidityResult?.total || 0;
+
+const ccDebtResult = db.prepare("SELECT SUM(ABS(balance)) as total FROM accounts WHERE type IN ('credit_card', 'credit') AND balance < 0").get() as { total: number | null };
+const accountDebt = ccDebtResult?.total || 0;
+
+const totalAssets = liquidity + totalSavings + totalCurrentValue;
+const totalLiabilities = totalDebt + accountDebt;
+const netWorth = totalAssets - totalLiabilities;
+
 ---
 
 <Layout title={"FinTrack - " + (lang === 'es' ? 'Patrimonio' : 'Portfolio')}>
   <div class="flex flex-col md:flex-row min-h-screen">
-    <Sidebar active="portfolio" username={user?.username || 'admin'} />
+    <div class="hidden md:flex flex-shrink-0">
+      <Sidebar active="portfolio" username={user?.username || 'admin'} />
+    </div>
+    <MobileTabBar active="portfolio" />
 
-    <main class="flex-1 p-6 space-y-6 overflow-y-auto font-mono">
+    <main class="flex-1 p-6 pb-24 md:pb-6 space-y-6 overflow-y-auto font-mono">
       <!-- Top Title -->
       <div class="border-b border-border-subtle pb-4">
         <h1 class="text-xl text-main font-bold">{t.portfolio_title}</h1>
@@ -122,7 +138,10 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
 
       <!-- Tabs Navigation -->
       <div class="flex flex-wrap gap-2 text-xs font-bold border-b border-border-subtle pb-4">
-        <button id="tab-btn-savings" class="px-4 py-2 bg-border-main text-bg border-border-main transition-colors cursor-pointer">
+        <button id="tab-btn-summary" class="px-4 py-2 bg-border-main text-bg border-border-main transition-colors cursor-pointer">
+          [ RESUMEN ]
+        </button>
+        <button id="tab-btn-savings" class="px-4 py-2 border border-border-main text-main hover:bg-surface-main transition-colors cursor-pointer">
           {t.tab_savings}
         </button>
         <button id="tab-btn-investments" class="px-4 py-2 border border-border-main text-main hover:bg-surface-main transition-colors cursor-pointer">
@@ -133,8 +152,38 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
         </button>
       </div>
 
+      <!-- ════════ TAB 0: RESUMEN ════════ -->
+      <div id="tab-content-summary" class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div class="border border-border-main bg-surface-main p-6 text-center">
+             <div class="text-sm text-secondary uppercase font-bold">{lang === 'es' ? 'TOTAL ACTIVOS' : 'TOTAL ASSETS'}</div>
+             <div class="text-3xl font-bold text-green-500 mt-2">{formatCLP(totalAssets, currency)}</div>
+             <div class="mt-4 text-xs text-left space-y-2 text-secondary">
+               <div class="flex justify-between"><span>{lang === 'es' ? 'Liquidez (Bancos/Efectivo)' : 'Liquidity'}:</span> <span class="text-main">{formatCLP(liquidity, currency)}</span></div>
+               <div class="flex justify-between"><span>{lang === 'es' ? 'Ahorros' : 'Savings'}:</span> <span class="text-main">{formatCLP(totalSavings, currency)}</span></div>
+               <div class="flex justify-between"><span>{lang === 'es' ? 'Inversiones' : 'Investments'}:</span> <span class="text-main">{formatCLP(totalCurrentValue, currency)}</span></div>
+             </div>
+          </div>
+          <div class="border border-border-main bg-surface-main p-6 text-center">
+             <div class="text-sm text-secondary uppercase font-bold">{lang === 'es' ? 'TOTAL PASIVOS (DEUDAS)' : 'TOTAL LIABILITIES (DEBT)'}</div>
+             <div class="text-3xl font-bold text-red-500 mt-2">-{formatCLP(totalLiabilities, currency)}</div>
+             <div class="mt-4 text-xs text-left space-y-2 text-secondary">
+               <div class="flex justify-between"><span>{lang === 'es' ? 'Tarjetas y Líneas de Crédito' : 'Credit Cards & Lines'}:</span> <span class="text-main">{formatCLP(accountDebt, currency)}</span></div>
+               <div class="flex justify-between"><span>{lang === 'es' ? 'Créditos Externos' : 'External Credits'}:</span> <span class="text-main">{formatCLP(totalDebt, currency)}</span></div>
+             </div>
+          </div>
+          <div class="border border-border-main bg-surface-main p-6 text-center">
+             <div class="text-sm text-secondary uppercase font-bold">{lang === 'es' ? 'PATRIMONIO NETO' : 'NET WORTH'}</div>
+             <div class={`text-3xl font-bold mt-2 ${netWorth >= 0 ? 'text-cyan-400' : 'text-red-500'}`}>{netWorth >= 0 ? '+' : ''}{formatCLP(netWorth, currency)}</div>
+             <div class="mt-4 text-xs text-secondary mt-4">
+               {lang === 'es' ? 'El patrimonio neto es la diferencia matemática real entre todo lo que posees y todo lo que debes.' : 'Net worth is the real mathematical difference between what you own and what you owe.'}
+             </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ════════ TAB 1: AHORRO ════════ -->
-      <div id="tab-content-savings" class="space-y-6">
+      <div id="tab-content-savings" class="hidden space-y-6">
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <!-- Lista de Bolsillos -->
           <section class="lg:col-span-8 space-y-6">
@@ -328,34 +377,36 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
               <div class="terminal-body text-xs space-y-3">
                 <form id="investment-form" class="space-y-3">
                   <div>
-                    <label class="block text-secondary mb-1">{t.label_inv_name}</label>
-                    <input type="text" id="inv-name" required placeholder="ej: Fintual Risky Norris"
-                      class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
-                  </div>
-                  <div>
-                    <label class="block text-secondary mb-1">{t.label_inv_platform}</label>
-                    <input type="text" id="inv-platform" placeholder="ej: Fintual, Racional, Binance"
-                      class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
-                  </div>
-                  <div>
                     <label class="block text-secondary mb-1">{t.label_inv_type}</label>
                     <select id="inv-type" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
                       <option value="fund">{t.option_inv_fund}</option>
                       <option value="stock">{t.option_inv_stock}</option>
                       <option value="crypto">{t.option_inv_crypto}</option>
                       <option value="deposit">{t.option_inv_deposit}</option>
+                      <option value="real_estate">{lang === 'es' ? 'BIEN RAÍZ / TERRENO' : 'REAL ESTATE / LAND'}</option>
+                      <option value="vehicle">{lang === 'es' ? 'VEHÍCULO' : 'VEHICLE'}</option>
                       <option value="other">{t.option_inv_other}</option>
                     </select>
+                  </div>
+                  <div>
+                    <label class="block text-secondary mb-1">{t.label_inv_name}</label>
+                    <input type="text" id="inv-name" required placeholder="ej: Fintual Risky Norris"
+                      class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                  </div>
+                  <div id="inv-platform-container">
+                    <label class="block text-secondary mb-1" id="inv-platform-label">{t.label_inv_platform}</label>
+                    <input type="text" id="inv-platform" placeholder="ej: Fintual, Racional, Binance"
+                      class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
                   </div>
                   <div>
                     <label class="block text-secondary mb-1">{t.label_inv_amount}</label>
                     <input type="number" id="inv-amount" required step="0.01" placeholder="ej: 500000"
                       class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
                   </div>
-                  <div>
-                    <label class="block text-secondary mb-1">{lang === 'es' ? 'CUENTA DE ORIGEN' : 'SOURCE ACCOUNT'}</label>
+                  <div id="inv-account-container">
+                    <label class="block text-secondary mb-1">{lang === 'es' ? 'CUENTA DE ORIGEN (Opcional)' : 'SOURCE ACCOUNT (Optional)'}</label>
                     <select id="inv-account" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
-                      <option value="">{lang === 'es' ? '-- Seleccionar Cuenta --' : '-- Select Account --'}</option>
+                      <option value="">{lang === 'es' ? '-- Ninguna (Ya pagado/Heredado) --' : '-- None (Already paid/Inherited) --'}</option>
                       {accounts.map(acc => (
                         <option value={acc.id}>{acc.name} ({formatCLP(acc.balance, currency)})</option>
                       ))}
@@ -547,36 +598,52 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
   document.addEventListener('astro:page-load', () => {
     const isEn = document.cookie.includes('lang=en');
 
+    // Helper para evitar listeners duplicados
+    const addListenerOnce = (el: Element | null, event: string, handler: any) => {
+      if (el && !(el as HTMLElement).dataset[`listener_${event}`]) {
+        (el as HTMLElement).dataset[`listener_${event}`] = 'true';
+        el.addEventListener(event, handler);
+      }
+    };
+
     // ── TABS ──
+    const btnSummary = document.getElementById('tab-btn-summary');
     const btnSavings = document.getElementById('tab-btn-savings');
     const btnInvestments = document.getElementById('tab-btn-investments');
     const btnCredits = document.getElementById('tab-btn-credits');
+    
+    const contentSummary = document.getElementById('tab-content-summary');
     const contentSavings = document.getElementById('tab-content-savings');
     const contentInvestments = document.getElementById('tab-content-investments');
     const contentCredits = document.getElementById('tab-content-credits');
 
-    if (!btnSavings || !btnInvestments || !btnCredits) return;
+    if (!btnSummary || !btnSavings || !btnInvestments || !btnCredits) return;
 
     const activeClass = 'px-4 py-2 bg-border-main text-bg border-border-main transition-colors cursor-pointer';
     const inactiveClass = 'px-4 py-2 border border-border-main text-main hover:bg-surface-main transition-colors cursor-pointer';
 
     function switchTab(activeBtn: Element, activeContent: Element, tabId: string) {
-      [btnSavings, btnInvestments, btnCredits].forEach(b => b!.className = inactiveClass);
-      [contentSavings, contentInvestments, contentCredits].forEach(c => c!.classList.add('hidden'));
+      [btnSummary, btnSavings, btnInvestments, btnCredits].forEach(b => b!.className = inactiveClass);
+      [contentSummary, contentSavings, contentInvestments, contentCredits].forEach(c => c!.classList.add('hidden'));
       activeBtn.className = activeClass;
       activeContent.classList.remove('hidden');
       sessionStorage.setItem('activePortfolioTab', tabId);
     }
 
-    btnSavings.addEventListener('click', () => switchTab(btnSavings!, contentSavings!, 'savings'));
-    btnInvestments.addEventListener('click', () => switchTab(btnInvestments!, contentInvestments!, 'investments'));
-    btnCredits.addEventListener('click', () => switchTab(btnCredits!, contentCredits!, 'credits'));
+    addListenerOnce(btnSummary, 'click', () => switchTab(btnSummary!, contentSummary!, 'summary'));
+    addListenerOnce(btnSavings, 'click', () => switchTab(btnSavings!, contentSavings!, 'savings'));
+    addListenerOnce(btnInvestments, 'click', () => switchTab(btnInvestments!, contentInvestments!, 'investments'));
+    addListenerOnce(btnCredits, 'click', () => switchTab(btnCredits!, contentCredits!, 'credits'));
 
     const savedTab = sessionStorage.getItem('activePortfolioTab');
     if (savedTab === 'investments') {
       switchTab(btnInvestments!, contentInvestments!, 'investments');
     } else if (savedTab === 'credits') {
       switchTab(btnCredits!, contentCredits!, 'credits');
+    } else if (savedTab === 'savings') {
+      switchTab(btnSavings!, contentSavings!, 'savings');
+    } else {
+      switchTab(btnSummary!, contentSummary!, 'summary');
     }
 
     // ── MODAL ──
@@ -599,9 +666,9 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
       pendingAction = null;
     }
 
-    modalCancelBtn?.addEventListener('click', closeModal);
-    modalCloseX?.addEventListener('click', closeModal);
-    modalConfirmBtn?.addEventListener('click', async () => {
+    addListenerOnce(modalCancelBtn, 'click', closeModal);
+    addListenerOnce(modalCloseX, 'click', closeModal);
+    addListenerOnce(modalConfirmBtn, 'click', async () => {
       if (pendingAction) {
         (modalConfirmBtn as HTMLButtonElement).disabled = true;
         const orig = modalConfirmBtn!.textContent;
@@ -613,12 +680,8 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
       }
     });
 
-    // ── SAVINGS: Crear Bolsillo ──
-    document.getElementById('goal-form')?.addEventListener('submit', async (e) => {
+    addListenerOnce(document.getElementById('goal-form'), 'submit', async (e: Event) => {
       e.preventDefault();
-      
-      const confirmed = await window.FinTrackConfirm(isEn ? 'Confirm goal creation?' : '¿Confirmar creación de objetivo?');
-      if (!confirmed) return;
 
       const name = (document.getElementById('goal-name') as HTMLInputElement).value;
       const target_amount = parseFloat((document.getElementById('goal-target') as HTMLInputElement).value);
@@ -645,7 +708,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
 
     // ── SAVINGS: Depositar ──
     document.querySelectorAll('.deposit-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      addListenerOnce(btn, 'click', (e: Event) => {
         const id = (e.target as HTMLElement).getAttribute('data-id');
         if (!id) return;
         const amount = parseFloat((document.getElementById(`amount-${id}`) as HTMLInputElement).value);
@@ -666,7 +729,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
 
     // ── SAVINGS: Retirar ──
     document.querySelectorAll('.withdraw-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      addListenerOnce(btn, 'click', (e: Event) => {
         const id = (e.target as HTMLElement).getAttribute('data-id');
         if (!id) return;
         const amount = parseFloat((document.getElementById(`amount-${id}`) as HTMLInputElement).value);
@@ -689,7 +752,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
 
     // ── SAVINGS: Eliminar bolsillo ──
     document.querySelectorAll('.delete-goal-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      addListenerOnce(btn, 'click', (e: Event) => {
         const id = (e.target as HTMLElement).getAttribute('data-id');
         if (!id) return;
         const msg = isEn ? 'Delete this savings pocket permanently?' : '¿Eliminar este bolsillo permanentemente?';
@@ -704,11 +767,36 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
     });
 
     // ── INVERSIONES: Crear ──
-    document.getElementById('investment-form')?.addEventListener('submit', async (e) => {
+    const invTypeSelect = document.getElementById('inv-type') as HTMLSelectElement;
+    const invPlatformContainer = document.getElementById('inv-platform-container');
+    const invPlatformLabel = document.getElementById('inv-platform-label');
+    const invAccountContainer = document.getElementById('inv-account-container');
+    const invPlatformInput = document.getElementById('inv-platform') as HTMLInputElement;
+    const invAccountSelect = document.getElementById('inv-account') as HTMLSelectElement;
+
+    if (invTypeSelect) {
+      addListenerOnce(invTypeSelect, 'change', (e: Event) => {
+        const type = (e.target as HTMLSelectElement).value;
+        if (type === 'real_estate') {
+          if (invPlatformLabel) invPlatformLabel.textContent = isEn ? 'LOCATION / ADDRESS' : 'UBICACIÓN / DIRECCIÓN';
+          if (invPlatformInput) invPlatformInput.placeholder = isEn ? 'e.g., South Land' : 'ej: Terreno Sur';
+          if (invAccountContainer) invAccountContainer.classList.add('hidden');
+          if (invAccountSelect) invAccountSelect.value = '';
+        } else if (type === 'vehicle') {
+          if (invPlatformLabel) invPlatformLabel.textContent = isEn ? 'BRAND / MODEL' : 'MARCA / MODELO';
+          if (invPlatformInput) invPlatformInput.placeholder = isEn ? 'e.g., Toyota Yaris' : 'ej: Toyota Yaris';
+          if (invAccountContainer) invAccountContainer.classList.add('hidden');
+          if (invAccountSelect) invAccountSelect.value = '';
+        } else {
+          if (invPlatformLabel) invPlatformLabel.textContent = isEn ? 'PLATFORM' : 'PLATAFORMA';
+          if (invPlatformInput) invPlatformInput.placeholder = 'ej: Fintual, Binance';
+          if (invAccountContainer) invAccountContainer.classList.remove('hidden');
+        }
+      });
+    }
+
+    addListenerOnce(document.getElementById('investment-form'), 'submit', async (e: Event) => {
       e.preventDefault();
-      
-      const confirmed = await window.FinTrackConfirm(isEn ? 'Confirm investment creation?' : '¿Confirmar registro de inversión?');
-      if (!confirmed) return;
 
       const name = (document.getElementById('inv-name') as HTMLInputElement).value;
       const platform = (document.getElementById('inv-platform') as HTMLInputElement).value;
@@ -719,7 +807,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
       const start_date = (document.getElementById('inv-date') as HTMLInputElement).value;
       const notes = (document.getElementById('inv-notes') as HTMLInputElement).value;
 
-      if (invested_amount > 0 && !account_id) {
+      if (invested_amount > 0 && !account_id && !['real_estate', 'vehicle'].includes(type)) {
         window.FinTrackAlert(isEn ? '> ERROR: Select a source account.' : '> ERROR: Selecciona una cuenta de origen.');
         return;
       }
@@ -737,7 +825,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
 
     // ── INVERSIONES: Actualizar valor ──
     document.querySelectorAll('.update-inv-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
+      addListenerOnce(btn, 'click', async (e: Event) => {
         const id = (e.target as HTMLElement).getAttribute('data-id');
         if (!id) return;
         const current_value = parseFloat((document.getElementById(`inv-value-${id}`) as HTMLInputElement).value);
@@ -753,7 +841,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
 
     // ── INVERSIONES: Eliminar ──
     document.querySelectorAll('.delete-inv-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      addListenerOnce(btn, 'click', (e: Event) => {
         const id = (e.target as HTMLElement).getAttribute('data-id');
         if (!id) return;
         const msg = isEn ? 'Delete this investment permanently?' : '¿Eliminar esta inversión permanentemente?';
@@ -769,11 +857,8 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
     });
 
     // ── CRÉDITOS: Crear ──
-    document.getElementById('credit-form')?.addEventListener('submit', async (e) => {
+    addListenerOnce(document.getElementById('credit-form'), 'submit', async (e: Event) => {
       e.preventDefault();
-      
-      const confirmed = await window.FinTrackConfirm(isEn ? 'Confirm credit creation?' : '¿Confirmar registro de crédito/deuda?');
-      if (!confirmed) return;
 
       const name = (document.getElementById('credit-name') as HTMLInputElement).value;
       const total_amount = parseFloat((document.getElementById('credit-total') as HTMLInputElement).value);
@@ -797,7 +882,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
 
     // ── CRÉDITOS: +1 Cuota ──
     document.querySelectorAll('.add-installment-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      addListenerOnce(btn, 'click', (e: Event) => {
         e.preventDefault();
         const el = e.currentTarget as HTMLElement;
         const id = el.getAttribute('data-id');
@@ -811,7 +896,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
 
     // ── CRÉDITOS: Abonar ──
     document.querySelectorAll('.pay-credit-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      addListenerOnce(btn, 'click', (e: Event) => {
         const id = (e.target as HTMLElement).getAttribute('data-id');
         if (!id) return;
         const amount = parseFloat((document.getElementById(`credit-pay-${id}`) as HTMLInputElement).value);
@@ -832,7 +917,7 @@ const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY nam
 
     // ── CRÉDITOS: Eliminar ──
     document.querySelectorAll('.delete-credit-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      addListenerOnce(btn, 'click', (e: Event) => {
         const id = (e.target as HTMLElement).getAttribute('data-id');
         if (!id) return;
         const msg = isEn ? 'Delete this credit permanently?' : '¿Eliminar este crédito permanentemente?';

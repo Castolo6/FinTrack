@@ -279,10 +279,16 @@ const goals = goalsList.map(g => {
 
 <script>
   document.addEventListener('astro:page-load', () => {
-// Crear Objetivo
-  const goalForm = document.getElementById('goal-form');
-  goalForm?.addEventListener('submit', async (e) => {
-    e.preventDefault();
+    const addListenerOnce = (el: Element | null, event: string, handler: any) => {
+      if (el && !(el as HTMLElement).dataset[`listener_${event}`]) {
+        (el as HTMLElement).dataset[`listener_${event}`] = 'true';
+        el.addEventListener(event, handler);
+      }
+    };
+    
+    const goalForm = document.getElementById('goal-form');
+    addListenerOnce(goalForm, 'submit', async (e: Event) => {
+      e.preventDefault();
     
     const confirmed = await window.FinTrackConfirm(isEn ? 'Confirm goal creation?' : '¿Confirmar creación de objetivo?');
     if (!confirmed) return;
@@ -343,10 +349,10 @@ const goals = goalsList.map(g => {
     }
   }
 
-  modalCancelBtn?.addEventListener('click', closeModal);
-  modalCloseX?.addEventListener('click', closeModal);
+  addListenerOnce(modalCancelBtn, 'click', closeModal);
+  addListenerOnce(modalCloseX, 'click', closeModal);
   
-  modalConfirmBtn?.addEventListener('click', async () => {
+  addListenerOnce(modalConfirmBtn, 'click', async () => {
     if (pendingAction) {
       modalConfirmBtn.disabled = true;
       const originalText = modalConfirmBtn.textContent;
@@ -362,7 +368,7 @@ const goals = goalsList.map(g => {
   // Depositar Fondos
   const depositButtons = document.querySelectorAll('.deposit-btn');
   depositButtons.forEach(btn => {
-    btn.addEventListener('click', async (e) => {
+    addListenerOnce(btn, 'click', async (e: Event) => {
       const target = e.target as HTMLButtonElement;
       const id = target.getAttribute('data-id');
       if (!id) return;
@@ -422,7 +428,7 @@ const goals = goalsList.map(g => {
   // Retirar Fondos
   const withdrawButtons = document.querySelectorAll('.withdraw-btn');
   withdrawButtons.forEach(btn => {
-    btn.addEventListener('click', async (e) => {
+    addListenerOnce(btn, 'click', async (e: Event) => {
       const target = e.target as HTMLButtonElement;
       const id = target.getAttribute('data-id');
       if (!id) return;
@@ -490,7 +496,7 @@ const goals = goalsList.map(g => {
   // Eliminar Objetivo
   const deleteButtons = document.querySelectorAll('.delete-btn');
   deleteButtons.forEach(btn => {
-    btn.addEventListener('click', async (e) => {
+    addListenerOnce(btn, 'click', async (e: Event) => {
       const target = e.target as HTMLButtonElement;
       const id = target.getAttribute('data-id');
       if (!id) return;

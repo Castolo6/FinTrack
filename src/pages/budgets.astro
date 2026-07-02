@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import { db } from '../lib/db';
 import { formatCLP } from '../lib/utils';
 import Sidebar from '../components/Sidebar.astro';
+import MobileTabBar from '../components/MobileTabBar.astro';
 import { getI18n } from '../lib/i18n';
 
 const user = Astro.locals.user;
@@ -66,10 +67,13 @@ const allExpenseCategories = db.prepare(`
   <div class="flex flex-col md:flex-row min-h-screen">
     
     <!-- Sidebar / Panel de Control -->
-    <Sidebar active="budgets" username={user?.username || 'admin'} />
+    <div class="hidden md:flex flex-shrink-0">
+      <Sidebar active="budgets" username={user?.username || 'admin'} />
+    </div>
+    <MobileTabBar active="budgets" />
 
     <!-- Main Content Area -->
-    <main class="flex-1 p-6 space-y-6 overflow-y-auto font-mono">
+    <main class="flex-1 p-6 pb-24 md:pb-6 space-y-6 overflow-y-auto font-mono">
       
       <!-- Top Title Command -->
       <div class="border-b border-border-subtle pb-4">

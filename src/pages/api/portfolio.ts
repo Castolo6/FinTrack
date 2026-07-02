@@ -124,14 +124,14 @@ function handleCreateInvestment(data: any): Response {
     );
   }
 
-  if (invested_amount > 0 && !account_id) {
+  if (invested_amount > 0 && !account_id && !['real_estate', 'vehicle'].includes(type)) {
     return new Response(
       JSON.stringify({ error: 'Se requiere seleccionar una cuenta de origen para el monto invertido.' }),
       { status: 400 }
     );
   }
 
-  const validTypes = ['fund', 'stock', 'crypto', 'deposit', 'other'];
+  const validTypes = ['fund', 'stock', 'crypto', 'deposit', 'real_estate', 'vehicle', 'other'];
   if (!validTypes.includes(type)) {
     return new Response(
       JSON.stringify({ error: `Tipo de inversión no válido. Debe ser uno de: ${validTypes.join(', ')}` }),
@@ -206,7 +206,7 @@ function handleUpdateInvestment(data: any): Response {
   }
 
   if (type) {
-    const validTypes = ['fund', 'stock', 'crypto', 'deposit', 'other'];
+    const validTypes = ['fund', 'stock', 'crypto', 'deposit', 'real_estate', 'vehicle', 'other'];
     if (!validTypes.includes(type)) {
       return new Response(
         JSON.stringify({ error: `Tipo de inversión no válido. Debe ser uno de: ${validTypes.join(', ')}` }),

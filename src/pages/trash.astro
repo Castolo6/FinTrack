@@ -1,6 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Sidebar from '../components/Sidebar.astro';
+import MobileTabBar from '../components/MobileTabBar.astro';
 import { getI18n } from '../lib/i18n';
 import { db } from '../lib/db';
 
@@ -34,9 +35,12 @@ const formatCurrency = (amount: number) => {
 <Layout title={"FinTrack - " + (lang === 'es' ? 'Papelera' : 'Trash')}>
   <div class="flex flex-col md:flex-row min-h-screen">
     
-    <Sidebar active="trash" username={user.username} />
+    <div class="hidden md:flex flex-shrink-0">
+      <Sidebar active="trash" username={user.username} />
+    </div>
+    <MobileTabBar active="trash" />
 
-    <main class="flex-1 p-6 space-y-6 overflow-y-auto">
+    <main class="flex-1 p-6 pb-24 md:pb-6 space-y-6 overflow-y-auto">
       
       <div class="border-b border-border-subtle pb-4">
         <h1 class="text-xl font-mono text-main font-bold">{lang === 'es' ? 'Papelera de Reciclaje' : 'Recycle Bin'}</h1>

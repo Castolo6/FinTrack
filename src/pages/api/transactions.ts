@@ -31,11 +31,11 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
     // Validar saldo suficiente o cupo para gastos, asignaciones y transferencias
     if (['expense', 'allocation', 'transfer'].includes(type)) {
-      if (account.account_type === 'credit_card') {
+      if (account.account_type === 'credit_card' || account.account_type === 'credit') {
         const available = (account.credit_limit || 0) + account.balance;
         if (available < amount) {
           return new Response(
-            JSON.stringify({ error: `Cupo insuficiente en la tarjeta. Disponible: ${available}, requerido: ${amount}.` }),
+            JSON.stringify({ error: `Cupo insuficiente. Disponible: ${available}, requerido: ${amount}.` }),
             { status: 400 }
           );
         }
