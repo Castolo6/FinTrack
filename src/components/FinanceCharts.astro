@@ -1,0 +1,346 @@
+---
+import { db } from '../lib/db';
+import { formatCLP } from '../lib/utils';
+import { getI18n } from '../lib/i18n';
+
+interface Props {
+  startDate: string; // Formato YYYY-MM-DD
+  endDate: string; // Formato YYYY-MM-DD
+}
+
+const { startDate, endDate } = Astro.props;
+const { lang, t } = getI18n(Astro);
+const currency = Astro.cookies.get('currency')?.value || 'CLP';
+
+// 1. Obtener gastos agrupados por categoría (Existente)
+const categoryExpenses = db.prepare(`
+  SELECT c.name, c.color, c.icon, SUM(t.amount) as total
+  FROM transactions t
+  JOIN categories c ON t.category_id = c.id
+  WHERE t.type = 'expense' AND t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
+  GROUP BY c.id
+  ORDER BY total DESC
+`).all(startDate, endDate) as Array<{
+  name: string;
+  color: string;
+  icon: string;
+  total: number;
+}>;
+
+const totalExpenses = categoryExpenses.reduce((sum, item) => sum + item.total, 0);
+
+const categoryData = categoryExpenses.map(item => {
+  const percent = totalExpenses > 0 ? Math.round((item.total / totalExpenses) * 100) : 0;
+  const barsCount = Math.round(percent / 10);
+  const progressBar = '[' + '█'.repeat(barsCount) + '░'.repeat(10 - barsCount) + ']';
+  return { ...item, percent, progressBar };
+});
+
+// 2. Obtener resumen de Ingresos vs Gastos (Existente)
+const summary = db.prepare(`
+  SELECT 
+    SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
+    SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
+  FROM transactions
+  WHERE date >= ? AND date <= ? AND deleted_at IS NULL
+`).get(startDate, endDate) as { income: number | null; expense: number | null };
+
+const totalIncome = summary?.income || 0;
+const totalExpense = summary?.expense || 0;
+const maxAmount = Math.max(totalIncome, totalExpense) || 1;
+const incomeBarHeight = Math.round((totalIncome / maxAmount) * 150);
+const expenseBarHeight = Math.round((totalExpense / maxAmount) * 150);
+
+// --- Lógica importada de charts.astro ---
+// Para los gráficos de evolución, usaremos la fecha inicial
+const startYear = startDate.split('-')[0];
+const startMonth = startDate.split('-')[1];
+
+const url = Astro.url;
+const selectedType = url.searchParams.get('type') === 'income' ? 'income' : 'expense';
+const typeLabel = selectedType === 'income' ? t.label_incomes_upper : t.label_expenses_upper;
+
+// A. OBTENER TRANSACCIONES DIARIAS (Mes de startDate)
+const dailyTransactionsRaw = db.prepare(`
+  SELECT date, SUM(amount) as total
+  FROM transactions
+  WHERE type = ? AND date >= ? AND date <= ? AND deleted_at IS NULL
+  GROUP BY date
+  ORDER BY date ASC
+`).all(selectedType, startDate, endDate) as Array<{ date: string; total: number }>;
+
+// Obtener cantidad de días del mes según startDate
+let daysInMonth = 31;
+if (startDate !== '1970-01-01') {
+  daysInMonth = new Date(parseInt(startYear), parseInt(startMonth), 0).getDate();
+}
+const dailyData: Array<{ day: number; total: number; label: string }> = [];
+
+for (let d = 1; d <= daysInMonth; d++) {
+  const dayStr = String(d).padStart(2, '0');
+  const dateStr = `${startYear}-${startMonth}-${dayStr}`;
+  const found = dailyTransactionsRaw.find(item => item.date === dateStr);
+  dailyData.push({
+    day: d,
+    total: found ? found.total : 0,
+    label: `${d}/${startMonth}`
+  });
+}
+
+const maxDaily = Math.max(...dailyData.map(d => d.total)) || 1;
+const dailyPath = dailyData.map((d, i) => {
+  const x = (i / (daysInMonth - 1)) * 560 + 20;
+  const y = 130 - (d.total / maxDaily) * 110;
+  return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+}).join(' ');
+const dailyAreaPath = dailyPath ? `${dailyPath} L 580 130 L 20 130 Z` : '';
+
+// B. OBTENER TOTAL SEMANAL
+const weeklyData = [
+  { label: t.week_1, total: 0 },
+  { label: t.week_2, total: 0 },
+  { label: t.week_3, total: 0 },
+  { label: t.week_4, total: 0 }
+];
+
+for (const d of dailyData) {
+  if (d.day <= 7) weeklyData[0].total += d.total;
+  else if (d.day <= 14) weeklyData[1].total += d.total;
+  else if (d.day <= 21) weeklyData[2].total += d.total;
+  else weeklyData[3].total += d.total;
+}
+const maxWeekly = Math.max(...weeklyData.map(w => w.total)) || 1;
+
+// C. OBTENER TOTAL MENSUAL (Año de startDate)
+const monthlyTransactionsRaw = db.prepare(`
+  SELECT strftime('%m', date) as month, SUM(amount) as total
+  FROM transactions
+  WHERE type = ? AND strftime('%Y', date) = ? AND deleted_at IS NULL
+  GROUP BY month
+  ORDER BY month ASC
+`).all(selectedType, startYear) as Array<{ month: string; total: number }>;
+
+const monthNames = lang === 'es' 
+  ? ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+  : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const monthlyData = monthNames.map((name, i) => {
+  const monthNum = String(i + 1).padStart(2, '0');
+  const found = monthlyTransactionsRaw.find(m => m.month === monthNum);
+  return { label: name, total: found ? found.total : 0 };
+});
+const maxMonthly = Math.max(...monthlyData.map(m => m.total)) || 1;
+---
+
+<div class="space-y-6">
+  
+  <!-- Fila 1: Resumen General (Ingresos vs Gastos y Desglose) -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Gráfico de Comparación Ingresos vs Gastos (SVG) -->
+    <div class="terminal-window m-0">
+      <div class="terminal-header">
+        <span>> chart --compare=cashflow</span>
+      </div>
+      <div class="terminal-body font-mono text-sm flex flex-col justify-between h-[250px]">
+        <h2 class="text-xs uppercase text-secondary mb-4">
+          {t.chart_cashflow}
+        </h2>
+        
+        {totalIncome === 0 && totalExpense === 0 ? (
+          <div class="flex-1 flex items-center justify-center text-muted-text text-xs border border-dashed border-border-subtle bg-bg">
+            [ NO DATA TO PLOT ]
+          </div>
+        ) : (
+          <div class="flex-1 flex items-end justify-around pb-2 border-b border-border-main">
+            <div class="flex flex-col items-center w-24">
+              <span class="text-green-500 text-xs font-bold mb-2">{formatCLP(totalIncome, currency)}</span>
+              <div class="w-12 bg-green-500 border border-green-700 transition-all duration-500" style={`height: ${incomeBarHeight}px;`}></div>
+              <span class="text-xs text-secondary mt-2">{t.label_incomes_upper}</span>
+            </div>
+            <div class="flex flex-col items-center w-24">
+              <span class="text-red-500 text-xs font-bold mb-2">{formatCLP(totalExpense, currency)}</span>
+              <div class="w-12 bg-red-500 border border-red-700 transition-all duration-500" style={`height: ${expenseBarHeight}px;`}></div>
+              <span class="text-xs text-secondary mt-2">{t.label_expenses_upper}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+
+    <!-- Desglose de Gastos por Categoría -->
+    <div class="terminal-window m-0">
+      <div class="terminal-header">
+        <span>> chart --group=categories</span>
+      </div>
+      <div class="terminal-body font-mono text-sm flex flex-col justify-between h-[250px] overflow-y-auto">
+        <h2 class="text-xs uppercase text-secondary mb-4">
+          {t.chart_distribution}
+        </h2>
+        
+        {categoryData.length === 0 ? (
+          <div class="flex-1 flex items-center justify-center text-muted-text text-xs border border-dashed border-border-subtle bg-bg">
+            [ NO DATA TO PLOT ]
+          </div>
+        ) : (
+          <div class="space-y-3">
+            {categoryData.map(item => (
+              <div class="space-y-1 text-xs">
+                <div class="flex justify-between">
+                  <span>{item.icon} {item.name}</span>
+                  <span class="text-secondary">
+                    {formatCLP(item.total, currency)} <span class="text-main font-bold">({item.percent}%)</span>
+                  </span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-accent font-bold">{item.progressBar}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+
+  <!-- Controles Evolución -->
+  <div class="flex justify-between items-center mt-8 border-b border-border-subtle pb-4">
+    <div>
+      <h1 class="text-xl text-main font-bold">> chart --analyze --evolution</h1>
+      <p class="text-xs text-secondary mt-1">
+        {t.chart_evolution} {selectedType === 'income' ? t.ingresos : t.gastos}.
+      </p>
+    </div>
+    <div class="flex gap-2 text-xs font-bold font-mono">
+      <a href={`?type=expense${url.searchParams.has('period') ? '&period='+url.searchParams.get('period') : ''}${url.searchParams.has('value') ? '&value='+url.searchParams.get('value') : ''}`} class={`px-3 py-1.5 border transition-colors ${selectedType === 'expense' ? 'bg-border-main text-bg border-border-main' : 'border-border-main text-main hover:bg-surface-main'}`}>
+        {t.chart_gastos || 'GASTOS'}
+      </a>
+      <a href={`?type=income${url.searchParams.has('period') ? '&period='+url.searchParams.get('period') : ''}${url.searchParams.has('value') ? '&value='+url.searchParams.get('value') : ''}`} class={`px-3 py-1.5 border transition-colors ${selectedType === 'income' ? 'bg-border-main text-bg border-border-main' : 'border-border-main text-main hover:bg-surface-main'}`}>
+        {t.chart_ingresos || 'INGRESOS'}
+      </a>
+    </div>
+  </div>
+
+  <!-- Fila 2: Gráfico Diario -->
+  <div class="terminal-window m-0">
+    <div class="terminal-header">
+      <span>{`> chart --period=daily --view=line --type=${selectedType}`}</span>
+    </div>
+    <div class="terminal-body space-y-4">
+      <h2 class="text-xs uppercase text-secondary">
+        {t.chart_daily.replace('%s', typeLabel)}
+      </h2>
+      
+      {maxDaily === 1 ? (
+        <div class="h-[180px] flex items-center justify-center text-muted-text text-xs border border-dashed border-border-subtle bg-bg">
+          [ NO DATA TO PLOT ]
+        </div>
+      ) : (
+        <div class="relative bg-bg border border-border-subtle p-4">
+          <svg viewBox="0 0 600 150" class="w-full h-[180px] overflow-visible">
+            <line x1="20" y1="20" x2="580" y2="20" stroke="#0a4a44" stroke-dasharray="2" />
+            <line x1="20" y1="75" x2="580" y2="75" stroke="#0a4a44" stroke-dasharray="2" />
+            <line x1="20" y1="130" x2="580" y2="130" stroke="#0a4a44" />
+            
+            {dailyAreaPath && <path d={dailyAreaPath} fill="url(#area-gradient)" opacity="0.15" />}
+            {dailyPath && <path d={dailyPath} fill="none" stroke="#1dc7b5" stroke-width="2" />}
+            
+            {dailyData.map((d, i) => {
+              if (d.total === 0) return null;
+              const x = (i / (daysInMonth - 1)) * 560 + 20;
+              const y = 130 - (d.total / maxDaily) * 110;
+              return (
+                <g class="group cursor-pointer">
+                  <circle cx={x} cy={y} r="4" fill="#080c14" stroke="#1dc7b5" stroke-width="2" />
+                  <title>{t.day_n.replace('%s', String(d.day))}: {formatCLP(d.total, currency)}</title>
+                </g>
+              );
+            })}
+            
+            <defs>
+              <linearGradient id="area-gradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#1dc7b5" />
+                <stop offset="100%" stop-color="#080c14" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="flex justify-between text-[10px] text-secondary mt-2 px-4 border-t border-border-subtle pt-2">
+            <span>{t.day_1}</span>
+            <span>{t.day_n.replace('%s', String(Math.round(daysInMonth / 2)))}</span>
+            <span>{t.day_n.replace('%s', String(daysInMonth))}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+
+  <!-- Fila 3: Gráfico Semanal y Mensual -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Semanal -->
+    <div class="terminal-window m-0">
+      <div class="terminal-header">
+        <span>{`> chart --period=weekly --view=bar --type=${selectedType}`}</span>
+      </div>
+      <div class="terminal-body space-y-4 h-[250px] flex flex-col justify-between">
+        <h2 class="text-xs uppercase text-secondary">
+          {t.chart_weekly.replace('%s', typeLabel)}
+        </h2>
+        
+        {maxWeekly === 1 ? (
+          <div class="flex-1 flex items-center justify-center text-muted-text text-xs border border-dashed border-border-subtle bg-bg">
+            [ NO DATA TO PLOT ]
+          </div>
+        ) : (
+          <div class="flex-1 flex items-end justify-around pb-2 border-b border-border-subtle">
+            {weeklyData.map(w => {
+              const barHeight = Math.round((w.total / maxWeekly) * 120);
+              return (
+                <div class="flex flex-col items-center w-20">
+                  <span class="text-[10px] text-main font-bold mb-1">{formatCLP(w.total, currency)}</span>
+                  <div class="w-8 bg-accent border border-border-main" style={`height: ${barHeight}px;`}></div>
+                  <span class="text-[9px] text-secondary text-center mt-2 whitespace-nowrap">{w.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+
+    <!-- Mensual -->
+    <div class="terminal-window m-0">
+      <div class="terminal-header">
+        <span>{`> chart --period=monthly --view=bar --type=${selectedType}`}</span>
+      </div>
+      <div class="terminal-body space-y-4 h-[250px] flex flex-col justify-between">
+        <h2 class="text-xs uppercase text-secondary">
+          {t.chart_monthly.replace('%s', typeLabel)}
+        </h2>
+        
+        {maxMonthly === 1 ? (
+          <div class="flex-1 flex items-center justify-center text-muted-text text-xs border border-dashed border-border-subtle bg-bg">
+            [ NO DATA TO PLOT ]
+          </div>
+        ) : (
+          <div class="flex-1 flex items-end justify-between pb-1 border-b border-border-subtle overflow-x-auto">
+            <div class="min-w-[400px] flex items-end justify-between h-full">
+              {monthlyData.map(m => {
+                const barHeight = Math.round((m.total / maxMonthly) * 120);
+                return (
+                  <div class="flex flex-col items-center w-7">
+                    {m.total > 0 && (
+                      <span class="text-[8px] text-main font-bold mb-1 rotation-text select-none">
+                        {Math.round(m.total / 1000)}k
+                      </span>
+                    )}
+                    <div class="w-4 bg-secondary border border-border-subtle" style={`height: ${barHeight}px;`}></div>
+                    <span class="text-[9px] text-secondary mt-1">{m.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+</div>

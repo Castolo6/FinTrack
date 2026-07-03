@@ -1,0 +1,841 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { db } from '../lib/db';
+import { formatCLP } from '../lib/utils';
+import FinanceCharts from '../components/FinanceCharts.astro';
+import Sidebar from '../components/Sidebar.astro';
+import MobileTabBar from '../components/MobileTabBar.astro';
+import { getI18n } from '../lib/i18n';
+
+const { lang, t } = getI18n(Astro);
+const currency = Astro.cookies.get('currency')?.value || 'CLP';
+
+// Obtener usuario del middleware
+const user = Astro.locals.user;
+
+// 1. LIQUIDEZ (Dinero en cuentas, excluyendo tarjetas de crédito y líneas)
+const liquidityResult = db.prepare("SELECT SUM(balance) as total FROM accounts WHERE type NOT IN ('credit_card', 'credit')").get() as { total: number | null };
+const liquidity = liquidityResult?.total || 0;
+
+// 2. INVERSIONES Y AHORROS
+let totalInvestments = 0;
+let totalSavings = 0;
+try {
+  const inv = db.prepare('SELECT SUM(current_value) as total FROM investments WHERE deleted_at IS NULL').get() as { total: number | null };
+  totalInvestments = inv?.total || 0;
+  
+  const sav = db.prepare('SELECT SUM(current_amount) as total FROM saving_goals WHERE deleted_at IS NULL').get() as { total: number | null };
+  totalSavings = sav?.total || 0;
+} catch (e) {}
+
+// 3. DEUDAS (Créditos + Tarjetas de crédito)
+let totalDebt = 0;
+try {
+  const debt = db.prepare('SELECT SUM(remaining_amount) as total FROM credits WHERE deleted_at IS NULL').get() as { total: number | null };
+  totalDebt = debt?.total || 0;
+
+  // Sumar la deuda de las tarjetas de crédito (saldos negativos)
+  const ccDebt = db.prepare("SELECT SUM(ABS(balance)) as total FROM accounts WHERE type IN ('credit_card', 'credit') AND balance < 0").get() as { total: number | null };
+  totalDebt += (ccDebt?.total || 0);
+} catch (e) {}
+
+// 4. PATRIMONIO TOTAL
+const netWorth = liquidity + totalInvestments + totalSavings - totalDebt;
+
+// Obtener tipo de rango y valor de los parámetros de búsqueda o valores por defecto
+const url = Astro.url;
+const isChartsActive = url.searchParams.has('type');
+const selectedPeriod = url.searchParams.get('period') || 'month'; // 'month' | 'year' | 'total'
+const selectedValue = url.searchParams.get('value') || '';
+
+const now = new Date();
+const currentYear = now.getFullYear();
+const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+
+let start = '1970-01-01';
+let end = '9999-12-31';
+let activeMonth = `${currentYear}-${currentMonth}`;
+let activeYear = String(currentYear);
+
+if (selectedPeriod === 'month') {
+  const monthValue = selectedValue && /^\d{4}-\d{2}$/.test(selectedValue)
+    ? selectedValue
+    : `${currentYear}-${currentMonth}`;
+  activeMonth = monthValue;
+  const [y, m] = monthValue.split('-');
+  start = `${y}-${m}-01`;
+  end = `${y}-${m}-31`;
+} else if (selectedPeriod === 'year') {
+  const yearValue = selectedValue && /^\d{4}$/.test(selectedValue)
+    ? selectedValue
+    : String(currentYear);
+  activeYear = yearValue;
+  start = `${yearValue}-01-01`;
+  end = `${yearValue}-12-31`;
+} else {
+  // Total
+  start = '1970-01-01';
+  end = '9999-12-31';
+}
+
+const startOfMonth = start;
+const endOfMonth = end;
+
+const incomeResult = db.prepare(`
+  SELECT SUM(amount) as total FROM transactions 
+  WHERE type = 'income' AND date >= ? AND date <= ? AND deleted_at IS NULL
+`).get(startOfMonth, endOfMonth) as { total: number | null };
+const monthlyIncome = incomeResult?.total || 0;
+
+const expenseResult = db.prepare(`
+  SELECT SUM(amount) as total FROM transactions 
+  WHERE type = 'expense' AND date >= ? AND date <= ? AND deleted_at IS NULL
+`).get(startOfMonth, endOfMonth) as { total: number | null };
+const monthlyExpenses = expenseResult?.total || 0;
+
+const savings = monthlyIncome - monthlyExpenses;
+const savingsRate = monthlyIncome > 0 ? Math.round((savings / monthlyIncome) * 100) : 0;
+
+// Obtener cuentas activas
+const accounts = db.prepare('SELECT * FROM accounts ORDER BY name ASC').all() as Array<{
+  id: string;
+  name: string;
+  type: string;
+  balance: number;
+  credit_limit: number;
+  currency: string;
+}>;
+
+// Obtener transacciones recientes (últimas 5 dentro del periodo seleccionado)
+const recentTransactions = db.prepare(`
+  SELECT t.*, a.name as account_name, c.name as category_name, c.icon as category_icon
+  FROM transactions t
+  JOIN accounts a ON t.account_id = a.id
+  JOIN categories c ON t.category_id = c.id
+  WHERE t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
+  ORDER BY t.date DESC, t.created_at DESC
+  LIMIT 5
+`).all(startOfMonth, endOfMonth) as Array<{
+  id: string;
+  amount: number;
+  type: string;
+  date: string;
+  description: string;
+  account_name: string;
+  category_name: string;
+  category_icon: string;
+}>;
+
+// Obtener categorías de gastos para formulario
+const expenseCategories = db.prepare("SELECT * FROM categories WHERE type = 'expense' ORDER BY name ASC").all() as Array<{
+  id: string;
+  name: string;
+  icon: string;
+}>;
+
+// Obtener categorías de ingresos para formulario
+const incomeCategories = db.prepare("SELECT * FROM categories WHERE type = 'income' ORDER BY name ASC").all() as Array<{
+  id: string;
+  name: string;
+  icon: string;
+}>;
+
+// Obtener categorías de asignación para formulario
+const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = 'allocation' ORDER BY name ASC").all() as Array<{
+  id: string;
+  name: string;
+  icon: string;
+}>;
+---
+
+<Layout title="FinTrack - Terminal Dashboard">
+  <div class="flex flex-col md:flex-row min-h-screen">
+    
+    <!-- Sidebar / Panel de Control -->
+    <div class="hidden md:flex flex-shrink-0">
+      <Sidebar active="dashboard" username={user?.username || 'admin'} />
+    </div>
+    <MobileTabBar active="dashboard" />
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-6 pb-24 md:pb-6 space-y-6 overflow-y-auto">
+      
+      <!-- Top Title Command & Time Filter -->
+      <div class="border-b border-border-subtle pb-4 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+        <div>
+          <h1 class="text-xl font-mono text-main font-bold">{t.systeminfo}</h1>
+          <p class="text-xs text-secondary font-mono mt-1">{t.last_update} {now.toLocaleString()}</p>
+        </div>
+        
+        <!-- Time Filter Form -->
+        <form method="GET" id="filter-form" class="font-mono text-xs flex flex-wrap items-center gap-3">
+          <!-- Preservar tipo de gráfico si existe en la URL -->
+          {url.searchParams.has('type') && <input type="hidden" name="type" value={url.searchParams.get('type')} />}
+          
+          <div class="flex items-center gap-1.5">
+            <label class="text-secondary uppercase">{t.range}</label>
+            <select 
+              name="period" 
+              onchange="document.getElementsByName('value').forEach(el => el && (el.value = '')); this.form.submit()"
+              class="bg-surface-main border border-border-main text-main p-1.5 focus:outline-none focus:border-accent font-bold cursor-pointer"
+            >
+              <option value="month" selected={selectedPeriod === 'month'}>{t.monthly}</option>
+              <option value="year" selected={selectedPeriod === 'year'}>{t.yearly}</option>
+              <option value="total" selected={selectedPeriod === 'total'}>{t.total}</option>
+            </select>
+          </div>
+
+          {selectedPeriod === 'month' && (
+            <div class="flex items-center gap-1.5">
+              <label class="text-secondary uppercase">{t.month}</label>
+              <input 
+                type="month" 
+                name="value" 
+                value={activeMonth} 
+                onchange="this.form.submit()" 
+                class="bg-surface-main border border-border-main text-main p-1.5 focus:outline-none focus:border-accent font-bold cursor-pointer"
+              />
+            </div>
+          )}
+
+          {selectedPeriod === 'year' && (
+            <div class="flex items-center gap-1.5">
+              <label class="text-secondary uppercase">{t.year}</label>
+              <select 
+                name="value" 
+                onchange="this.form.submit()" 
+                class="bg-surface-main border border-border-main text-main p-1.5 focus:outline-none focus:border-accent font-bold cursor-pointer"
+              >
+                {[currentYear - 2, currentYear - 1, currentYear, currentYear + 1].map(y => (
+                  <option value={String(y)} selected={activeYear === String(y)}>{y}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </form>
+      </div>
+
+      <!-- Tabs Navigation -->
+      <div class="flex flex-wrap gap-2 text-xs font-bold font-mono border-b border-border-subtle pb-4">
+        <button id="tab-btn-overview" class={`px-4 py-2 transition-colors cursor-pointer ${isChartsActive ? 'border border-border-main text-main hover:bg-surface-main' : 'bg-border-main text-bg border-border-main'}`}>
+          {t.tab_overview}
+        </button>
+        <button id="tab-btn-charts" class={`px-4 py-2 transition-colors cursor-pointer ${isChartsActive ? 'bg-border-main text-bg border-border-main' : 'border border-border-main text-main hover:bg-surface-main'}`}>
+          {t.tab_charts}
+        </button>
+        <button id="tab-btn-operations" class="px-4 py-2 border border-border-main text-main hover:bg-surface-main transition-colors cursor-pointer">
+          {t.tab_operations}
+        </button>
+        <button id="tab-btn-strategy" class="px-4 py-2 border border-border-main text-main hover:bg-surface-main transition-colors cursor-pointer">
+          {t.strategy || '[ ESTRATEGIA ]'}
+        </button>
+      </div>
+
+      <!-- TAB 1: OVERVIEW -->
+      <div id="tab-content-overview" class={`space-y-6 ${isChartsActive ? 'hidden' : 'block'}`}>
+        
+        <!-- Financial Metrics Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
+          <div class="border border-border-main bg-surface-main p-4">
+            <div class="text-xs text-secondary uppercase">{t.net_worth || 'PATRIMONIO'}</div>
+            <div class={`text-2xl font-bold mt-2 ${netWorth < 0 ? 'text-red-500' : 'text-main'}`}>{formatCLP(netWorth, currency)}</div>
+          </div>
+          <div class="border border-border-main bg-surface-main p-4">
+            <div class="text-xs text-secondary uppercase">{t.liquidity || 'LIQUIDEZ'}</div>
+            <div class="text-2xl font-bold text-accent mt-2">{formatCLP(liquidity, currency)}</div>
+          </div>
+          <div class="border border-border-main bg-surface-main p-4">
+            <div class="text-xs text-secondary uppercase">
+              {selectedPeriod === 'month' ? t.incomes_month : selectedPeriod === 'year' ? t.incomes_year : t.incomes_total}
+            </div>
+            <div class="text-2xl font-bold text-green-500 mt-2">+{formatCLP(monthlyIncome, currency)}</div>
+          </div>
+          <div class="border border-border-main bg-surface-main p-4">
+            <div class="text-xs text-secondary uppercase">
+              {selectedPeriod === 'month' ? t.expenses_month : selectedPeriod === 'year' ? t.expenses_year : t.expenses_total}
+            </div>
+            <div class="text-2xl font-bold text-red-500 mt-2">-{formatCLP(monthlyExpenses, currency)}</div>
+          </div>
+          <div class="border border-border-main bg-surface-main p-4">
+            <div class="text-xs text-secondary uppercase">{t.savings_rate}</div>
+            <div class="text-2xl font-bold mt-2" class:list={{ 'text-green-500': savingsRate > 0, 'text-main': savingsRate <= 0 }}>
+              {savingsRate}%
+            </div>
+          </div>
+        </div>
+
+        <!-- Cuentas y Transacciones -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Cuentas -->
+          <div class="terminal-window m-0 h-full flex flex-col">
+            <div class="terminal-header">
+              <span>{t.ls_accounts}</span>
+            </div>
+            <div class="terminal-body font-mono text-sm space-y-4 flex-1">
+              {accounts.length === 0 ? (
+                <div class="text-secondary p-2 border border-dashed border-border-subtle bg-bg text-center h-full flex items-center justify-center">
+                  {t.no_accounts}
+                </div>
+              ) : (
+                <div class="grid grid-cols-1 gap-4">
+                  {accounts.map(acc => (
+                    <div class="border border-border-subtle p-3 bg-bg-subtle flex justify-between items-center">
+                      <div>
+                        <div class="font-bold text-main">{acc.name}</div>
+                        <div class="text-xs text-secondary uppercase">
+                          {acc.type === 'cash' ? t.option_cash : 
+                           acc.type === 'bank' ? t.option_bank : 
+                           acc.type === 'credit_card' ? t.option_credit_card : 
+                           acc.type === 'credit' ? t.option_credit : 
+                           acc.type === 'investment' ? t.option_investment : 
+                           acc.type === 'other' ? t.option_other : acc.type}
+                        </div>
+                      </div>
+                      <div class="text-right">
+                        {acc.type === 'credit_card' || acc.type === 'credit' ? (
+                          <>
+                            <div class="text-xs text-main">Cupo total: {formatCLP(acc.credit_limit || 0, currency)}</div>
+                            <div class="text-xs text-red-500">Usado: {formatCLP(Math.abs(acc.balance), currency)}</div>
+                            <div class="text-xs text-green-500">Disponible: {formatCLP((acc.credit_limit || 0) + acc.balance, currency)}</div>
+                          </>
+                        ) : (
+                          <div class="font-bold text-main">{formatCLP(acc.balance, currency)}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <!-- Transacciones Recientes -->
+          <div class="terminal-window m-0 h-full flex flex-col">
+            <div class="terminal-header">
+              <span>{t.tail_transactions}</span>
+            </div>
+            <div class="terminal-body font-mono text-sm flex-1">
+              {recentTransactions.length === 0 ? (
+                <div class="text-secondary p-2 border border-dashed border-border-subtle bg-bg text-center h-full flex items-center justify-center">
+                  {t.no_transactions}
+                </div>
+              ) : (
+                <div class="overflow-x-auto">
+                  <table class="w-full text-left border-collapse">
+                    <thead>
+                      <tr class="border-b border-border-main text-secondary text-xs uppercase">
+                        <th class="py-2 px-1">{t.table_date}</th>
+                        <th class="py-2 px-1">{t.table_category}</th>
+                        <th class="py-2 px-1 text-right">{t.table_amount}</th>
+                        <th class="py-2 px-1 text-center">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border-subtle">
+                      {recentTransactions.map(t => (
+                        <tr class="hover:bg-surface-main">
+                          <td class="py-2 px-1 text-xs text-secondary whitespace-nowrap">{t.date}</td>
+                          <td class="py-2 px-1 whitespace-nowrap">
+                            <span class="block">{t.category_icon} {t.category_name}</span>
+                            <span class="text-[10px] text-secondary">{t.account_name}</span>
+                          </td>
+                          <td class={`py-2 px-1 text-right font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
+                            {t.type === 'income' ? '+' : '-'}{formatCLP(t.amount, currency)}
+                          </td>
+                          <td class="py-2 px-1 text-center">
+                            <button class="delete-btn text-xs text-red-500 hover:text-red-300 font-bold underline cursor-pointer bg-transparent border-0" data-id={t.id}>
+                              [x]
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: CHARTS -->
+      <div id="tab-content-charts" class={`space-y-6 ${isChartsActive ? 'block' : 'hidden'}`}>
+        <FinanceCharts startDate={startOfMonth} endDate={endOfMonth} />
+      </div>
+
+      <!-- TAB 3: OPERATIONS -->
+      <div id="tab-content-operations" class="space-y-6 hidden">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+          
+          <!-- Registrar Transacción -->
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>{t.write_tx_sh}</span>
+            </div>
+            <div class="terminal-body font-mono text-xs">
+              {accounts.length === 0 ? (
+                <p class="text-secondary text-center">{t.no_accounts_to_register}</p>
+              ) : (
+                <form id="tx-form" class="space-y-3">
+                  <div>
+                    <label class="block text-secondary mb-1">{t.label_type}</label>
+                    <select id="tx-type" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                      <option value="expense">{t.type_expense || 'GASTO'}</option>
+                      <option value="allocation">{t.type_allocation || 'ASIGNACIÓN (→)'}</option>
+                      <option value="income">{t.type_income || 'INGRESO'}</option>
+                      <option value="transfer">{t.option_transfer}</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-secondary mb-1">{t.label_account}</label>
+                    <select id="tx-account" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                      {accounts.map(acc => (
+                        <option value={acc.id}>{acc.name} ({formatCLP(acc.balance, currency)})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div id="tx-destination-container" class="hidden">
+                    <label class="block text-secondary mb-1">{t.label_destination_account}</label>
+                    <select id="tx-destination-account" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                      {accounts.map(acc => (
+                        <option value={acc.id}>{acc.name} ({formatCLP(acc.balance, currency)})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label class="block text-secondary mb-1">{t.label_category}</label>
+                    <select id="tx-category" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                      <optgroup label={t.type_expense || "Gastos"} id="group-expense">
+                        {expenseCategories.map(cat => (
+                          <option value={cat.id}>{cat.icon} {cat.name}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label={t.type_allocation || "Asignación de Patrimonio"} id="group-allocation" class="hidden">
+                        {allocationCategories.map(cat => (
+                          <option value={cat.id}>{cat.icon} {cat.name}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label={t.type_income || "Ingresos"} id="group-income" class="hidden">
+                        {incomeCategories.map(cat => (
+                          <option value={cat.id}>{cat.icon} {cat.name}</option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label class="block text-secondary mb-1">{t.label_amount}</label>
+                    <input type="number" id="tx-amount" step="0.01" required placeholder="0.00" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                  </div>
+
+                  <div>
+                    <label class="block text-secondary mb-1">{t.label_date}</label>
+                    <input type="date" id="tx-date" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                  </div>
+
+                  <div>
+                    <label class="block text-secondary mb-1">{t.label_description}</label>
+                    <input type="text" id="tx-desc" placeholder="Detalles de transacción" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                  </div>
+
+                  <button type="submit" class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 transition-colors cursor-pointer">{t.btn_register}</button>
+                </form>
+              )}
+            </div>
+          </div>
+
+          <!-- Crear Cuenta -->
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>{t.write_acc_sh}</span>
+            </div>
+            <div class="terminal-body font-mono text-xs">
+              <form id="account-form" class="space-y-3">
+                <div>
+                  <label class="block text-secondary mb-1">{t.label_acc_name}</label>
+                  <input type="text" id="acc-name" required placeholder="ej: Billetera, Banco principal" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                </div>
+                <div>
+                  <label class="block text-secondary mb-1">{t.label_acc_type}</label>
+                  <select id="acc-type" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                    <option value="cash">{t.option_cash}</option>
+                    <option value="bank">{t.option_bank}</option>
+                    <option value="credit_card">{t.option_credit_card}</option>
+                    <option value="credit">{t.option_credit}</option>
+                    <option value="investment">{t.option_investment}</option>
+                    <option value="other">{t.option_other}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-secondary mb-1" id="label-acc-balance">{t.label_acc_balance}</label>
+                  <input type="number" id="acc-balance" required step="0.01" value="0.00" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                </div>
+                <div id="acc-limit-container" class="hidden">
+                  <label class="block text-secondary mb-1">Cupo de Tarjeta (Límite Total)</label>
+                  <input type="number" id="acc-limit" step="0.01" value="0.00" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                </div>
+                <button type="submit" class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 transition-colors cursor-pointer">{t.btn_create_account}</button>
+              </form>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- TAB 4: STRATEGY 50/30/20 -->
+      <div id="tab-content-strategy" class="space-y-6 hidden">
+        <!-- Diagram Area -->
+        <div class="border border-border-main p-4 bg-surface-main">
+          <div class="text-main font-bold mb-4">[ DIAGRAMA DE DISTRIBUCIÓN ]</div>
+          <div class="flex flex-col md:flex-row gap-4 h-auto md:h-32">
+            
+            <!-- 50% Necesidades -->
+            <div class="flex-1 border border-border-subtle bg-bg flex flex-col justify-center items-center relative overflow-hidden group">
+              <div class="absolute inset-0 bg-accent/10 transition-transform origin-left w-1/2 group-hover:w-full duration-500 ease-out z-0 hidden md:block"></div>
+              <div class="relative z-10 text-center">
+                <span class="text-3xl font-bold text-accent block">50%</span>
+                <span class="text-xs text-main uppercase font-bold mt-1 block">
+                  {lang === 'es' ? 'NECESIDADES' : 'NEEDS'}
+                </span>
+              </div>
+              <div class="relative z-10 text-[10px] text-secondary text-center mt-2 px-2">
+                {lang === 'es' ? 'Arriendo, Comida, Cuentas Básicas, Pago mínimo de deuda' : 'Rent, Food, Utilities, Minimum debt payments'}
+              </div>
+            </div>
+
+            <!-- 30% Deseos -->
+            <div class="flex-1 border border-border-subtle bg-bg flex flex-col justify-center items-center relative overflow-hidden group">
+              <div class="absolute inset-0 bg-yellow-500/10 transition-transform origin-left w-[30%] group-hover:w-full duration-500 ease-out z-0 hidden md:block"></div>
+              <div class="relative z-10 text-center">
+                <span class="text-3xl font-bold text-yellow-500 block">30%</span>
+                <span class="text-xs text-main uppercase font-bold mt-1 block">
+                  {lang === 'es' ? 'DESEOS' : 'WANTS'}
+                </span>
+              </div>
+              <div class="relative z-10 text-[10px] text-secondary text-center mt-2 px-2">
+                {lang === 'es' ? 'Salidas, Entretenimiento, Suscripciones, Viajes' : 'Dining out, Entertainment, Subscriptions, Travel'}
+              </div>
+            </div>
+
+            <!-- 20% Futuro -->
+            <div class="flex-1 border border-border-subtle bg-bg flex flex-col justify-center items-center relative overflow-hidden group">
+              <div class="absolute inset-0 bg-green-500/10 transition-transform origin-left w-[20%] group-hover:w-full duration-500 ease-out z-0 hidden md:block"></div>
+              <div class="relative z-10 text-center">
+                <span class="text-3xl font-bold text-green-500 block">20%</span>
+                <span class="text-xs text-main uppercase font-bold mt-1 block">
+                  {lang === 'es' ? 'FUTURO' : 'FUTURE'}
+                </span>
+              </div>
+              <div class="relative z-10 text-[10px] text-secondary text-center mt-2 px-2">
+                {lang === 'es' ? 'Ahorro, Inversiones, Pago de deudas extra' : 'Savings, Investments, Extra debt payments'}
+              </div>
+            </div>
+
+          </div>
+          
+          <!-- CSS ASCII representation for fun -->
+          <div class="mt-6 text-xs font-mono text-secondary">
+            <div class="mb-1">{lang === 'es' ? 'Vista de Barra del Sistema:' : 'System Bar View:'}</div>
+            <div class="flex h-6 border border-border-subtle w-full max-w-2xl">
+              <div class="bg-accent/40 h-full flex items-center justify-center text-[10px] text-bg font-bold border-r border-bg" style="width: 50%;">50%</div>
+              <div class="bg-yellow-500/40 h-full flex items-center justify-center text-[10px] text-bg font-bold border-r border-bg" style="width: 30%;">30%</div>
+              <div class="bg-green-500/40 h-full flex items-center justify-center text-[10px] text-bg font-bold" style="width: 20%;">20%</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Description Markdown Style -->
+        <div class="terminal-window m-0 border border-border-main bg-surface-main">
+          <div class="terminal-header">
+            <span>{lang === 'es' ? 'manual — 50/30/20' : 'manual — 50/30/20'}</span>
+          </div>
+          <div class="terminal-body bg-bg text-main font-mono text-sm p-4 md:p-6 overflow-y-auto markdown-body space-y-4">
+            
+            <h2 class="text-accent border-b border-border-subtle pb-2 mb-4 font-bold">¿Qué es el Método 50/30/20?</h2>
+            <p class="text-secondary leading-relaxed">
+              El método 50/30/20 es una regla de oro de las finanzas personales diseñada para simplificar la gestión del presupuesto. Divide tus ingresos netos (después de impuestos) en solo tres grandes categorías, eliminando la necesidad de rastrear cada centavo en micro-categorías.
+            </p>
+
+            <h3 class="text-main font-bold mt-6 mb-2">[ 1. EL 50%: NECESIDADES (Lo esencial para vivir) ]</h3>
+            <p class="text-secondary leading-relaxed">
+              Representa el límite máximo de lo que deberías gastar en tus obligaciones ineludibles. Son las cosas que, si pierdes tu trabajo hoy, seguirías teniendo que pagar.
+            </p>
+            <ul class="list-disc list-inside text-secondary ml-4 mt-2 space-y-1">
+              <li><strong>Ejemplos:</strong> Arriendo/Dividendo, cuentas básicas, alimentación, transporte, seguros.</li>
+              <li><strong>Regla de oro:</strong> Si esta categoría supera el 50%, tu estilo de vida base es demasiado caro para tus ingresos actuales.</li>
+            </ul>
+
+            <h3 class="text-main font-bold mt-6 mb-2">[ 2. EL 30%: DESEOS (Calidad de vida) ]</h3>
+            <p class="text-secondary leading-relaxed">
+              Es el dinero destinado a disfrutar el presente. Reconoce psicológicamente que necesitamos diversión para mantener un presupuesto a largo plazo sin frustrarnos.
+            </p>
+            <ul class="list-disc list-inside text-secondary ml-4 mt-2 space-y-1">
+              <li><strong>Ejemplos:</strong> Restaurantes, cine, suscripciones (Netflix, Spotify), viajes, hobbies.</li>
+              <li><strong>Regla de oro:</strong> Es la categoría más fácil de recortar si hay una emergencia financiera.</li>
+            </ul>
+
+            <h3 class="text-main font-bold mt-6 mb-2">[ 3. EL 20%: FUTURO (Ahorro, Inversión y Deudas) ]</h3>
+            <p class="text-secondary leading-relaxed">
+              Es la categoría más importante para tu crecimiento patrimonial y tu tranquilidad mental. Este dinero debe pagarse a "ti mismo" primero, idealmente de forma automática.
+            </p>
+            
+            <div class="mt-4 p-4 border border-border-subtle bg-surface-main">
+              <h4 class="text-main font-bold mb-2">Fases de Ejecución del 20%:</h4>
+              <ol class="list-decimal list-inside text-secondary space-y-2 ml-2">
+                <li><strong>Fase 1 - Colchón Inicial:</strong> Crear un fondo de emergencia pequeño (ej. $1.000 USD / $1.000.000 CLP).</li>
+                <li><strong>Fase 2 - Matar Deudas:</strong> Prepagar agresivamente tarjetas y créditos de consumo (usar el 20% completo para esto, aparte del pago mínimo en el 50%).</li>
+                <li><strong>Fase 3 - Fondo Robusto:</strong> Ampliar el fondo de emergencia para cubrir 3 a 6 meses de tus necesidades fijas.</li>
+                <li><strong>Fase 4 - Inversión Pura:</strong> Invertir a largo plazo (ETFs, fondos indexados, APV) para generar riqueza real.</li>
+              </ol>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</Layout>
+
+<div id="index-data" data-categories={JSON.stringify({ expenseCategories, incomeCategories, allocationCategories })} class="hidden"></div>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const dataEl = document.getElementById('index-data');
+    if (!dataEl) return;
+    const { expenseCategories, incomeCategories, allocationCategories } = JSON.parse(dataEl.getAttribute('data-categories'));
+    
+    // Lógica de Tabs
+  const btnOverview = document.getElementById('tab-btn-overview');
+  const btnCharts = document.getElementById('tab-btn-charts');
+  const btnOperations = document.getElementById('tab-btn-operations');
+  const btnStrategy = document.getElementById('tab-btn-strategy');
+  
+  const contentOverview = document.getElementById('tab-content-overview');
+  const contentCharts = document.getElementById('tab-content-charts');
+  const contentOperations = document.getElementById('tab-content-operations');
+  const contentStrategy = document.getElementById('tab-content-strategy');
+
+  const activeClass = 'px-4 py-2 bg-border-main text-bg border-border-main transition-colors cursor-pointer';
+  const inactiveClass = 'px-4 py-2 border border-border-main text-main hover:bg-surface-main transition-colors cursor-pointer';
+
+  function switchTab(activeBtn, activeContent) {
+    if(!btnOverview || !btnCharts || !btnOperations || !btnStrategy) return;
+    
+    // Reset buttons
+    btnOverview.className = inactiveClass;
+    btnCharts.className = inactiveClass;
+    btnOperations.className = inactiveClass;
+    btnStrategy.className = inactiveClass;
+    
+    // Hide all contents
+    contentOverview.classList.add('hidden');
+    contentCharts.classList.add('hidden');
+    contentOperations.classList.add('hidden');
+    contentStrategy.classList.add('hidden');
+    
+    // Activate selected
+    activeBtn.className = activeClass;
+    activeContent.classList.remove('hidden');
+  }
+
+  if (btnOverview && btnCharts && btnOperations && btnStrategy) {
+    btnOverview.addEventListener('click', () => switchTab(btnOverview, contentOverview));
+    btnCharts.addEventListener('click', () => switchTab(btnCharts, contentCharts));
+    btnOperations.addEventListener('click', () => switchTab(btnOperations, contentOperations));
+    btnStrategy.addEventListener('click', () => switchTab(btnStrategy, contentStrategy));
+  }
+
+  // Formularios lógicas (Cuentas y Transacciones)
+  const dateInput = document.getElementById('tx-date');
+  if (dateInput) {
+    const today = new Date().toISOString().split('T')[0];
+    dateInput.value = today;
+  }
+
+  const txTypeSelect = document.getElementById('tx-type') as HTMLSelectElement;
+  const groupExpense = document.getElementById('group-expense');
+  const groupAllocation = document.getElementById('group-allocation');
+  const groupIncome = document.getElementById('group-income');
+  const categorySelect = document.getElementById('tx-category') as HTMLSelectElement;
+  const destContainer = document.getElementById('tx-destination-container');
+  const destSelect = document.getElementById('tx-destination-account');
+
+  if (txTypeSelect && categorySelect) {
+    txTypeSelect.addEventListener('change', (e) => {
+      const type = (e.target as HTMLSelectElement).value;
+      
+      groupExpense?.classList.add('hidden');
+      groupAllocation?.classList.add('hidden');
+      groupIncome?.classList.add('hidden');
+
+      if (destContainer) {
+        if (type === 'transfer') {
+          destContainer.classList.remove('hidden');
+          if (destSelect) (destSelect as HTMLSelectElement).required = true;
+        } else {
+          destContainer.classList.add('hidden');
+          if (destSelect) (destSelect as HTMLSelectElement).required = false;
+        }
+      }
+
+      if (type === 'expense') {
+        groupExpense?.classList.remove('hidden');
+        if (groupExpense?.firstElementChild) {
+          categorySelect.value = (groupExpense.firstElementChild as HTMLOptionElement).value;
+        }
+      } else if (type === 'allocation' || type === 'transfer') {
+        groupAllocation?.classList.remove('hidden');
+        let pagoOption = null;
+        if (type === 'transfer' && groupAllocation) {
+          const options = groupAllocation.querySelectorAll('option');
+          options.forEach(opt => {
+            if (opt.textContent?.toLowerCase().includes('pago')) pagoOption = opt;
+          });
+        }
+        if (pagoOption) {
+          categorySelect.value = pagoOption.value;
+        } else if (groupAllocation?.firstElementChild) {
+          categorySelect.value = (groupAllocation.firstElementChild as HTMLOptionElement).value;
+        }
+      } else if (type === 'income') {
+        groupIncome?.classList.remove('hidden');
+        if (groupIncome?.firstElementChild) {
+          categorySelect.value = (groupIncome.firstElementChild as HTMLOptionElement).value;
+        }
+      }
+    });
+  }
+
+  const accountForm = document.getElementById('account-form');
+  const accTypeSelect = document.getElementById('acc-type') as HTMLSelectElement;
+  const accLimitContainer = document.getElementById('acc-limit-container');
+  const labelAccBalance = document.getElementById('label-acc-balance');
+
+  if (accTypeSelect && accLimitContainer) {
+    accTypeSelect.addEventListener('change', (e) => {
+      const type = (e.target as HTMLSelectElement).value;
+      if (type === 'credit_card') {
+        accLimitContainer.classList.remove('hidden');
+        if (labelAccBalance) labelAccBalance.textContent = 'Deuda Actual (Ingresa lo que debes)';
+      } else if (type === 'credit') {
+        accLimitContainer.classList.add('hidden');
+        if (labelAccBalance) labelAccBalance.textContent = 'Cupo Aprobado (Límite Total)';
+      } else {
+        accLimitContainer.classList.add('hidden');
+        if (labelAccBalance) labelAccBalance.textContent = 'Saldo Actual';
+      }
+    });
+  }
+
+  if (accountForm) {
+    accountForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const confirmed = await window.FinTrackConfirm('¿Confirmar creación de cuenta nueva?');
+      if (!confirmed) return;
+
+      const name = (document.getElementById('acc-name') as HTMLInputElement).value;
+      const type = (document.getElementById('acc-type') as HTMLSelectElement).value;
+      let balance = parseFloat((document.getElementById('acc-balance') as HTMLInputElement).value || '0');
+      let credit_limit = parseFloat((document.getElementById('acc-limit') as HTMLInputElement)?.value || '0');
+
+      if (type === 'credit') {
+        credit_limit = balance;
+        balance = 0;
+      } else if (type === 'credit_card' && balance > 0) {
+        balance = -balance;
+      }
+
+      const match = document.cookie.match(/currency=([^;]+)/);
+      const currency = match ? match[1] : 'CLP';
+
+      try {
+        const res = await fetch('/api/accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, type, balance, currency, credit_limit })
+        });
+        if (!res.ok) throw new Error('Error al crear la cuenta');
+        window.location.reload();
+      } catch (err) {
+        window.FinTrackAlert(err.message);
+      }
+    });
+  }
+
+  const txForm = document.getElementById('tx-form');
+  if (txForm) {
+    txForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const confirmed = await window.FinTrackConfirm('¿Confirmar registro de transacción?');
+      if (!confirmed) return;
+
+      const type = (document.getElementById('tx-type') as HTMLSelectElement).value;
+      const account_id = (document.getElementById('tx-account') as HTMLSelectElement).value;
+      const destination_account_id = type === 'transfer' ? (document.getElementById('tx-destination-account') as HTMLSelectElement).value : undefined;
+      const category_id = (document.getElementById('tx-category') as HTMLSelectElement).value;
+      const amount = parseFloat((document.getElementById('tx-amount') as HTMLInputElement).value);
+      const date = (document.getElementById('tx-date') as HTMLInputElement).value;
+      const description = (document.getElementById('tx-desc') as HTMLInputElement).value;
+
+      try {
+        const res = await fetch('/api/transactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, account_id, category_id, amount, date, description, destination_account_id })
+        });
+        if (!res.ok) {
+           const errData = await res.json();
+           throw new Error(errData.error || 'Error al registrar la transacción');
+        }
+        window.location.reload();
+      } catch (err: any) {
+        window.FinTrackAlert(err.message);
+      }
+    });
+  }
+
+  // Lógica para botones de eliminar en el Dashboard
+  const deleteButtons = document.querySelectorAll('.delete-btn');
+  deleteButtons.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const target = e.target as HTMLButtonElement;
+      const id = target.getAttribute('data-id');
+      if (!id) return;
+
+      const confirmed = await window.FinTrackConfirm('¿Eliminar esta transacción? Se enviará a la papelera y el dinero volverá a tu cuenta.');
+      if (!confirmed) return;
+
+      try {
+        const response = await fetch(`/api/transactions/${id}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Error al eliminar');
+        }
+        window.location.reload();
+      } catch (err: any) {
+        window.FinTrackAlert(`> ERROR: ${err.message}`);
+      }
+    });
+  });
+
+  // Auto-open modal si viene redirigido desde la barra de navegación móvil
+  if (window.location.search.includes('add=true')) {
+    const addTxBtn = document.getElementById('tab-btn-operations');
+    if (addTxBtn) {
+      addTxBtn.click();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Limpiar la URL sin recargar la página
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }
+
+  });
+</script>

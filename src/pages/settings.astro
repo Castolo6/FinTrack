@@ -1,0 +1,215 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Sidebar from '../components/Sidebar.astro';
+import MobileTabBar from '../components/MobileTabBar.astro';
+import { getI18n } from '../lib/i18n';
+
+const user = Astro.locals.user;
+const { lang, t } = getI18n(Astro);
+const now = new Date();
+---
+
+<Layout title={"FinTrack - " + (lang === 'es' ? 'Respaldos' : 'Backups')}>
+  <div class="flex flex-col md:flex-row min-h-screen">
+    
+    <!-- Sidebar / Panel de Control -->
+    <div class="hidden md:flex flex-shrink-0">
+      <Sidebar active="settings" username={user?.username || 'admin'} />
+    </div>
+    <MobileTabBar active="settings" />
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-6 pb-24 md:pb-6 space-y-6 overflow-y-auto">
+      
+      <!-- Top Title Command -->
+      <div class="border-b border-border-subtle pb-4">
+        <h1 class="text-xl font-mono text-main font-bold">{t.settings_title}</h1>
+        <p class="text-xs text-secondary font-mono mt-1">{t.settings_subtitle}</p>
+      </div>
+
+      <!-- Panels Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <!-- Export Panel -->
+        <div class="terminal-window m-0">
+          <div class="terminal-header">
+            <span>{`> export --database=sqlite`}</span>
+          </div>
+          <div class="terminal-body font-mono text-sm space-y-4">
+            <h2 class="text-lg font-bold text-main">{lang === 'es' ? 'Exportar Respaldo' : 'Export Backup'}</h2>
+            <p class="text-secondary text-xs">
+              {lang === 'es'
+                ? 'Descarga una copia completa de tus finanzas en formato JSON. Esta copia incluye tus usuarios, cuentas, categorías registradas, transacciones y presupuestos.'
+                : 'Download a complete copy of your finances in JSON format. This copy includes your users, accounts, registered categories, transactions, and budgets.'}
+            </p>
+            
+            <a 
+              href="/api/backup/export" 
+              download
+              class="inline-block text-center bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 px-4 font-mono transition-colors text-xs uppercase cursor-pointer"
+            >
+              {lang === 'es' ? '[ DESCARGAR_RESPALDO_JSON ]' : '[ DOWNLOAD_JSON_BACKUP ]'}
+            </a>
+          </div>
+        </div>
+
+        <!-- Import Panel -->
+        <div class="terminal-window m-0">
+          <div class="terminal-header">
+            <span>{`> import --file=fintrack_backup.json`}</span>
+          </div>
+          <div class="terminal-body font-mono text-sm space-y-4">
+            <h2 class="text-lg font-bold text-main">{lang === 'es' ? 'Restaurar Respaldo' : 'Restore Backup'}</h2>
+            <p class="text-secondary text-xs">
+              {lang === 'es'
+                ? 'Sube un archivo de respaldo JSON previamente exportado. PRECAUCIÓN: Esto sobrescribirá y reemplazará todos tus datos financieros actuales de forma permanente.'
+                : 'Upload a previously exported JSON backup file. CAUTION: This will overwrite and replace all your current financial data permanently.'}
+            </p>
+
+            <form id="restore-form" class="space-y-4">
+              <div class="border border-dashed border-border-main p-4 bg-surface-main text-center cursor-pointer relative hover:border-accent">
+                <input 
+                  type="file" 
+                  id="backup-file" 
+                  accept=".json"
+                  required
+                  class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                />
+                <span id="file-label" class="text-xs text-secondary font-mono">
+                  {lang === 'es' ? 'Seleccionar archivo .json' : 'Select .json file'}
+                </span>
+              </div>
+
+              <!-- Status Output -->
+              <div id="status-output" class="hidden text-xs p-2 border"></div>
+
+              <button 
+                type="submit" 
+                class="w-full bg-red-950/20 hover:bg-red-800 border border-red-900 text-red-500 hover:text-bg font-bold py-2 font-mono transition-colors text-xs uppercase cursor-pointer"
+              >
+                {lang === 'es' ? '[ EJECUTAR_RESTAURACION ]' : '[ EXECUTE_RESTORE ]'}
+              </button>
+            </form>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal de Confirmación de Restauración -->
+      <div id="restore-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center backdrop-blur-sm">
+        <div class="terminal-window max-w-md w-full mx-4 m-0 shadow-2xl border-red-500">
+          <div class="terminal-header bg-red-950/50 border-b border-red-900">
+            <span class="text-red-500 font-bold">⚠️ {lang === 'es' ? 'ADVERTENCIA_CRITICA' : 'CRITICAL_WARNING'}</span>
+          </div>
+          <div class="terminal-body font-mono text-sm space-y-6">
+            <p class="text-main">
+              {lang === 'es' 
+                ? 'Estás a punto de sobrescribir toda la base de datos de FinTrack. Tus datos actuales se eliminarán de forma permanente y serán reemplazados por el respaldo.'
+                : 'You are about to overwrite the entire FinTrack database. Your current data will be permanently deleted and replaced by the backup.'}
+            </p>
+            <p class="text-red-400 text-xs">
+              {lang === 'es' 
+                ? 'La sesión se cerrará automáticamente al finalizar.'
+                : 'Your session will be automatically closed upon completion.'}
+            </p>
+            
+            <div class="flex flex-col sm:flex-row gap-4 mt-6">
+              <button id="btn-cancel-restore" type="button" class="flex-1 bg-surface-main hover:bg-surface-light border border-border-main text-secondary hover:text-main font-bold py-2 px-4 transition-colors uppercase cursor-pointer">
+                {lang === 'es' ? '[ CANCELAR ]' : '[ CANCEL ]'}
+              </button>
+              <button id="btn-confirm-restore" type="button" class="flex-1 bg-red-950/30 hover:bg-red-900 border border-red-900 text-red-500 hover:text-red-100 font-bold py-2 px-4 transition-colors uppercase cursor-pointer">
+                {lang === 'es' ? '[ EJECUTAR_AHORA ]' : '[ EXECUTE_NOW ]'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</Layout>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+  const fileInput = document.getElementById('backup-file') as HTMLInputElement;
+  const fileLabel = document.getElementById('file-label') as HTMLSpanElement;
+  const form = document.getElementById('restore-form') as HTMLFormElement;
+  const statusOutput = document.getElementById('status-output') as HTMLDivElement;
+  const restoreModal = document.getElementById('restore-modal') as HTMLDivElement;
+  const btnCancel = document.getElementById('btn-cancel-restore') as HTMLButtonElement;
+  const btnConfirm = document.getElementById('btn-confirm-restore') as HTMLButtonElement;
+
+  const isEn = document.cookie.includes('lang=en');
+
+  fileInput?.addEventListener('change', () => {
+    if (fileInput.files && fileInput.files.length > 0) {
+      fileLabel.textContent = isEn ? `File: ${fileInput.files[0].name}` : `Archivo: ${fileInput.files[0].name}`;
+      fileLabel.classList.remove('text-secondary');
+      fileLabel.classList.add('text-main', 'font-bold');
+    } else {
+      fileLabel.textContent = isEn ? 'Select .json file' : 'Seleccionar archivo .json';
+    }
+  });
+
+  form?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!fileInput.files || fileInput.files.length === 0) return;
+    restoreModal.classList.remove('hidden');
+  });
+
+  btnCancel?.addEventListener('click', () => {
+    restoreModal.classList.add('hidden');
+    statusOutput.classList.add('hidden');
+  });
+
+  btnConfirm?.addEventListener('click', () => {
+    restoreModal.classList.add('hidden');
+    if (!fileInput.files || fileInput.files.length === 0) return;
+
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+
+    statusOutput.classList.remove('hidden', 'border-red-900', 'text-red-500', 'bg-red-950/20', 'border-green-900', 'text-green-500', 'bg-green-950/20');
+    statusOutput.textContent = isEn ? '> Reading backup file...' : '> Leyendo archivo de respaldo...';
+    statusOutput.classList.add('border-border-main', 'text-secondary', 'bg-surface-main');
+
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string;
+        const backupData = JSON.parse(text);
+
+        statusOutput.textContent = isEn ? '> Transferring data to server...' : '> Transfiriendo datos al servidor...';
+
+        const response = await fetch('/api/backup/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(backupData)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || (isEn ? 'Error restoring backup.' : 'Error al restaurar el respaldo.'));
+        }
+
+        statusOutput.classList.remove('border-border-main', 'text-secondary', 'bg-surface-main');
+        statusOutput.classList.add('border-green-900', 'text-green-500', 'bg-green-950/20');
+        statusOutput.textContent = isEn 
+          ? '✅ Database successfully restored. Redirecting to login...' 
+          : '✅ Base de datos restaurada correctamente. Redirigiendo a inicio de sesión...';
+
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 2000);
+
+      } catch (err: any) {
+        statusOutput.classList.remove('border-border-main', 'text-secondary', 'bg-surface-main');
+        statusOutput.classList.add('border-red-900', 'text-red-500', 'bg-red-950/20');
+        statusOutput.textContent = `> ERROR: ${err.message}`;
+      }
+    };
+
+    reader.readAsText(file);
+  });
+  });
+</script>

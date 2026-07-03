@@ -1,0 +1,156 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { getI18n } from '../lib/i18n';
+
+const { lang, t } = getI18n(Astro);
+---
+
+<Layout title={"FinTrack - " + (lang === 'es' ? 'Iniciar Sesión' : 'Login')}>
+  <main class="flex items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-md terminal-window">
+      <!-- Terminal Header -->
+      <div class="terminal-header">
+        <span>{t.login_title}</span>
+        <div class="terminal-buttons">
+          <span class="terminal-button"></span>
+          <span class="terminal-button"></span>
+          <span class="terminal-button"></span>
+        </div>
+      </div>
+
+      <!-- Terminal Body -->
+      <div class="terminal-body">
+        <h1 class="text-2xl font-bold mb-2 text-main font-mono">{t.login_header}</h1>
+        <p class="text-secondary text-sm mb-6 font-mono">
+          {t.login_desc}
+        </p>
+
+        <form id="login-form" class="space-y-4">
+          <div>
+            <label for="username" class="block text-xs uppercase font-bold text-secondary mb-1 font-mono">
+              [ {t.user} ]
+            </label>
+            <div class="flex items-center border border-border-main bg-surface-main">
+              <span class="pl-3 pr-1 text-secondary font-mono">></span>
+              <input
+                type="text"
+                id="username"
+                name="username"
+                placeholder="admin"
+                required
+                class="w-full bg-transparent border-0 py-2 px-1 focus:ring-0 focus:outline-none text-main font-mono text-sm placeholder:text-muted-text"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label for="password" class="block text-xs uppercase font-bold text-secondary mb-1 font-mono">
+              {t.label_password}
+            </label>
+            <div class="flex items-center border border-border-main bg-surface-main">
+              <span class="pl-3 pr-1 text-secondary font-mono">></span>
+              <input
+                type="password"
+                id="password"
+                name="password"
+                placeholder="••••••••"
+                required
+                class="w-full bg-transparent border-0 py-2 px-1 focus:ring-0 focus:outline-none text-main font-mono text-sm placeholder:text-muted-text"
+              />
+            </div>
+          </div>
+
+          <!-- Error Output -->
+          <div id="error-output" class="hidden text-red-500 text-xs font-mono border border-red-900 bg-red-950/20 p-2">
+            <!-- Dinámico -->
+          </div>
+
+          <!-- Submit Button -->
+          <button
+            type="submit"
+            class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 font-mono transition-colors text-sm uppercase cursor-pointer"
+          >
+            {t.btn_login}
+          </button>
+
+          <!-- Language Switcher in Login -->
+          <div class="mt-4 pt-4 border-t border-border-subtle flex justify-between items-center text-[10px] font-mono text-secondary">
+            <span>{t.lang_label}</span>
+            <div class="flex gap-1.5">
+              <button
+                type="button"
+                id="btn-lang-es"
+                class={`px-1.5 py-0.5 border cursor-pointer transition-colors ${lang === 'es' ? 'bg-border-main text-bg border-border-main' : 'bg-surface-main text-secondary border-border-subtle hover:text-main hover:border-border-main'}`}
+              >
+                ES
+              </button>
+              <button
+                type="button"
+                id="btn-lang-en"
+                class={`px-1.5 py-0.5 border cursor-pointer transition-colors ${lang === 'en' ? 'bg-border-main text-bg border-border-main' : 'bg-surface-main text-secondary border-border-subtle hover:text-main hover:border-border-main'}`}
+              >
+                EN
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+const form = document.getElementById('login-form') as HTMLFormElement;
+  const errorOutput = document.getElementById('error-output') as HTMLDivElement;
+
+  const isEn = document.cookie.includes('lang=en');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorOutput.classList.add('hidden');
+
+    const usernameInput = document.getElementById('username') as HTMLInputElement;
+    const passwordInput = document.getElementById('password') as HTMLInputElement;
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: usernameInput.value,
+          password: passwordInput.value,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || (isEn ? 'Incorrect username or password.' : 'Nombre de usuario o contraseña incorrectos.'));
+      }
+
+      // Redirigir al inicio en caso de éxito
+      window.location.href = '/';
+    } catch (err: any) {
+      errorOutput.textContent = `> ERROR: ${err.message}`;
+      errorOutput.classList.remove('hidden');
+    }
+  });
+
+  // Configurar los botones de idioma
+  const btnEs = document.getElementById('btn-lang-es');
+  const btnEn = document.getElementById('btn-lang-en');
+  if (btnEs) {
+    btnEs.addEventListener('click', () => {
+      document.cookie = "lang=es; path=/; max-age=31536000";
+      window.location.reload();
+    });
+  }
+  if (btnEn) {
+    btnEn.addEventListener('click', () => {
+      document.cookie = "lang=en; path=/; max-age=31536000";
+      window.location.reload();
+    });
+  }
+  });
+</script>

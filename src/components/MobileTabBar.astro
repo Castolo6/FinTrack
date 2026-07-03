@@ -1,0 +1,118 @@
+---
+import { getI18n } from '../lib/i18n';
+
+interface Props {
+  active: string;
+}
+
+const { active } = Astro.props;
+const { t } = getI18n(Astro);
+
+const items = [
+  { id: 'dashboard', href: '/', icon: '⌂', label: 'Inicio' },
+  { id: 'budgets', href: '/budgets', icon: '¥', label: 'Pptos' },
+  { id: 'add', href: '#add-transaction', icon: '+', label: 'Añadir', isFab: true },
+  { id: 'portfolio', href: '/portfolio', icon: '↗', label: 'Inv/Aho' },
+  { id: 'menu', href: '#menu', icon: '☰', label: 'Menú' }
+];
+---
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 bg-bg/90 backdrop-blur-md border-t border-border-main safe-pb">
+  <div class="flex items-center justify-around px-2 pt-2">
+    {items.map(item => {
+      if (item.isFab) {
+        return (
+          <button 
+            id="mobile-add-btn" 
+            class="relative -top-6 flex flex-col items-center justify-center min-w-[56px] w-14 h-14 rounded-full bg-accent text-bg shadow-[0_0_15px_rgba(29,199,181,0.4)] border-4 border-bg hover:scale-105 transition-transform"
+          >
+            <span class="text-2xl font-bold">{item.icon}</span>
+          </button>
+        );
+      }
+      
+      const isActive = active === item.id;
+      return (
+          <a 
+            href={item.href} 
+            id={item.id === 'menu' ? 'mobile-menu-btn' : ''}
+            class={`flex flex-col items-center p-2 min-w-[64px] transition-colors ${isActive ? 'text-accent' : 'text-secondary hover:text-main'}`}
+          >
+            <span class="text-xl font-mono mb-1">{item.icon}</span>
+            <span class="text-[9px] font-mono uppercase truncate w-full text-center">{item.label}</span>
+            {isActive ? <div class="w-1 h-1 bg-accent mt-1"></div> : <div class="w-1 h-1 bg-transparent mt-1"></div>}
+          </a>
+        )
+      })}
+    </div>
+  </nav>
+
+  <!-- Menú Móvil Fullscreen -->
+  <div id="mobile-menu-overlay" class="fixed inset-0 bg-bg/95 backdrop-blur-lg z-[100] hidden flex-col font-mono">
+    <div class="flex justify-between items-center p-4 border-b border-border-main">
+      <span class="text-lg font-bold text-main">[FT] FinTrack</span>
+      <button id="mobile-menu-close" class="text-2xl text-secondary hover:text-main cursor-pointer p-2">✕</button>
+    </div>
+    <div class="flex-1 overflow-y-auto p-4 space-y-6">
+      <div class="space-y-4 text-lg">
+        <a href="/" class="block text-main hover:text-accent border-l-2 border-transparent hover:border-accent pl-4">{t.dashboard || 'Inicio'}</a>
+        <a href="/history" class="block text-main hover:text-accent border-l-2 border-transparent hover:border-accent pl-4">{t.history || 'Historial'}</a>
+        <a href="/portfolio" class="block text-main hover:text-accent border-l-2 border-transparent hover:border-accent pl-4">{t.portfolio || 'Patrimonio'}</a>
+        <a href="/budgets" class="block text-main hover:text-accent border-l-2 border-transparent hover:border-accent pl-4">{t.budgets || 'Presupuestos'}</a>
+        <a href="/analysis" class="block text-main hover:text-accent border-l-2 border-transparent hover:border-accent pl-4">{t.analysis || 'Análisis IA'}</a>
+        <a href="/settings" class="block text-main hover:text-accent border-l-2 border-transparent hover:border-accent pl-4">{t.settings || 'Respaldo & Config'}</a>
+        <a href="/help" class="block text-main hover:text-accent border-l-2 border-transparent hover:border-accent pl-4">{t.help || 'Ayuda'}</a>
+      </div>
+      
+      <div class="pt-6 border-t border-border-subtle space-y-4">
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-secondary">Idioma:</span>
+          <div class="flex gap-2">
+            <button onclick="document.cookie='lang=es; path=/; max-age=31536000'; window.location.reload();" class="px-2 py-1 border border-border-main bg-surface-main text-main">ES</button>
+            <button onclick="document.cookie='lang=en; path=/; max-age=31536000'; window.location.reload();" class="px-2 py-1 border border-border-main bg-surface-main text-main">EN</button>
+          </div>
+        </div>
+        <a href="/api/auth/logout" class="block text-center border border-red-900 bg-red-950/20 text-red-500 font-bold py-3 mt-8">
+          {t.logout || 'Cerrar Sesión'}
+        </a>
+      </div>
+    </div>
+  </div>
+
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const fabBtn = document.getElementById('mobile-add-btn');
+    if (fabBtn) {
+      fabBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const addTxBtn = document.getElementById('tab-btn-operations');
+        if (addTxBtn) {
+          addTxBtn.click();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+          // If the operations tab doesn't exist on this page, redirect to index
+          window.location.href = '/?add=true';
+        }
+      });
+    }
+
+    const menuBtn = document.getElementById('mobile-menu-btn');
+    const menuOverlay = document.getElementById('mobile-menu-overlay');
+    const menuCloseBtn = document.getElementById('mobile-menu-close');
+
+    if (menuBtn && menuOverlay && menuCloseBtn) {
+      menuBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        menuOverlay.classList.remove('hidden');
+        menuOverlay.classList.add('flex');
+        document.body.style.overflow = 'hidden';
+      });
+
+      menuCloseBtn.addEventListener('click', () => {
+        menuOverlay.classList.add('hidden');
+        menuOverlay.classList.remove('flex');
+        document.body.style.overflow = '';
+      });
+    }
+  });
+</script>

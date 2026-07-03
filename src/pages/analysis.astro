@@ -1,0 +1,262 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { db } from '../lib/db';
+import Sidebar from '../components/Sidebar.astro';
+import MobileTabBar from '../components/MobileTabBar.astro';
+import { getI18n } from '../lib/i18n';
+import { marked } from 'marked';
+
+const user = Astro.locals.user;
+const { lang, t } = getI18n(Astro);
+
+// Obtener los análisis guardados en la base de datos
+const savedAnalyses = db.prepare('SELECT type, content, updated_at FROM analysis_cache').all() as Array<{
+  type: string;
+  content: string;
+  updated_at: number;
+}>;
+
+let defaultTab = 'situacion';
+let defaultContent = '';
+let defaultTimestamp = 0;
+
+if (savedAnalyses.length > 0) {
+  // Sort by updated_at descending to get the most recent
+  savedAnalyses.sort((a, b) => b.updated_at - a.updated_at);
+  defaultTab = savedAnalyses[0].type;
+  defaultContent = savedAnalyses[0].content;
+  defaultTimestamp = savedAnalyses[0].updated_at;
+}
+
+const formatTimestampServer = (ts: number) => {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${day}/${month} ${hours}:${minutes}`;
+};
+const defaultFormattedTime = defaultTimestamp ? formatTimestampServer(defaultTimestamp) : '';
+const defaultContentHtml = defaultContent ? marked.parse(defaultContent) : '';
+---
+
+<Layout title={"FinTrack - " + (lang === 'es' ? 'Análisis Moneypenny IA' : 'Moneypenny AI Analysis')}>
+  <div class="flex flex-col md:flex-row min-h-screen">
+    
+    <!-- Sidebar / Panel de Control -->
+    <div class="hidden md:flex flex-shrink-0">
+      <Sidebar active="analysis" username={user?.username || 'admin'} />
+    </div>
+    <MobileTabBar active="analysis" />
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-6 pb-24 md:pb-6 space-y-6 overflow-y-auto font-mono">
+      
+      <!-- Top Title Command -->
+      <div class="border-b border-border-subtle pb-4">
+        <h1 class="text-xl text-main font-bold">{t.vesper_analyze}</h1>
+        <p class="text-xs text-secondary mt-1">{t.analysis_subtitle}</p>
+      </div>
+
+      <!-- Vesper System Description Panel -->
+      <div class="border border-border-main p-4 bg-surface-main space-y-2 text-xs">
+        <div class="text-main font-bold">{t.vesper_info_title}</div>
+        <p class="text-secondary leading-relaxed">{t.vesper_info_desc}</p>
+      </div>
+
+
+      <!-- Actions & Terminal Output Window -->
+      <div class="flex flex-col h-[700px] border border-border-main bg-surface-main mb-24 md:mb-0">
+        
+        <!-- Terminal Output Window (Chat History) -->
+        <div class="terminal-window m-0 flex-1 flex flex-col min-h-0 border-0 border-b border-border-main">
+          <div class="terminal-header">
+            <span>moneypenny@fintrack — chat — bash 80x24</span>
+          </div>
+          <div class="terminal-body bg-bg text-main font-mono text-xs md:text-sm flex-1 overflow-y-auto p-4" id="terminal-stdout-container">
+            <div id="chat-history" class="space-y-6">
+              <div class="markdown-body max-w-none text-accent border border-accent/20 bg-accent/5 p-3">
+                <strong>> MONEYPENNY OS v2.0</strong><br/>
+                {lang === 'es' 
+                  ? '> Conexión establecida. ¿En qué te puedo asesorar hoy? Elige una auditoría rápida o hazme una pregunta directa.'
+                  : '> Connection established. How can I advise you today? Choose a quick audit or ask me a direct question.'}
+              </div>
+            </div>
+            <div id="loading-indicator" class="hidden mt-6 text-accent animate-pulse font-bold"></div>
+          </div>
+        </div>
+
+        <!-- Chat Input & Quick Actions Area -->
+        <div class="p-3 bg-surface-main shrink-0">
+          <!-- Quick Actions (chips) -->
+          <div class="flex flex-wrap gap-2 mb-3">
+            <button data-type="situacion" class="analysis-trigger text-[10px] uppercase border border-border-main px-2 py-1 bg-bg-subtle text-main hover:bg-border-main hover:text-bg transition-colors cursor-pointer">
+              {lang === 'es' ? '[ AUDITAR SITUACIÓN ]' : '[ AUDIT SITUATION ]'}
+            </button>
+            <button data-type="fugas" class="analysis-trigger text-[10px] uppercase border border-border-main px-2 py-1 bg-bg-subtle text-main hover:bg-border-main hover:text-bg transition-colors cursor-pointer">
+              {lang === 'es' ? '[ DETECTAR FUGAS ]' : '[ DETECT LEAKAGES ]'}
+            </button>
+            <button data-type="mejoras" class="analysis-trigger text-[10px] uppercase border border-border-main px-2 py-1 bg-bg-subtle text-main hover:bg-border-main hover:text-bg transition-colors cursor-pointer">
+              {lang === 'es' ? '[ PLAN DE MEJORAS ]' : '[ IMPROVEMENT PLAN ]'}
+            </button>
+            <button data-type="objetivos" class="analysis-trigger text-[10px] uppercase border border-border-main px-2 py-1 bg-bg-subtle text-main hover:bg-border-main hover:text-bg transition-colors cursor-pointer">
+              {lang === 'es' ? '[ VIABILIDAD OBJETIVOS ]' : '[ GOALS VIABILITY ]'}
+            </button>
+          </div>
+
+          <!-- Input Form -->
+          <form id="chat-form" class="flex items-center gap-2">
+            <span class="text-accent font-bold">$></span>
+            <input 
+              type="text" 
+              id="chat-input" 
+              placeholder={lang === 'es' ? 'Hazle una pregunta abierta a Moneypenny...' : 'Ask Moneypenny an open question...'}
+              class="flex-1 bg-transparent border-none outline-none text-main text-xs md:text-sm font-mono placeholder-muted-text"
+              autocomplete="off"
+              required
+            />
+            <button 
+              type="submit" 
+              id="chat-submit"
+              class="bg-accent text-bg hover:bg-accent/80 font-bold px-4 py-1 transition-colors text-xs uppercase cursor-pointer"
+            >
+              {lang === 'es' ? 'ENVIAR' : 'SEND'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+</Layout>
+
+<div id="analysis-data" data-analyses={JSON.stringify(savedAnalyses)} class="hidden"></div>
+
+<script>
+  import { marked } from 'marked';
+
+  document.addEventListener('astro:page-load', () => {
+    const triggerButtons = document.querySelectorAll('.analysis-trigger');
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input') as HTMLInputElement;
+    const chatSubmit = document.getElementById('chat-submit') as HTMLButtonElement;
+    const chatHistory = document.getElementById('chat-history');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const terminalStdoutContainer = document.getElementById('terminal-stdout-container');
+
+    let isProcessing = false;
+
+    function formatTokens(text) {
+      if (!text) return '';
+      return text
+        .replace(/\[VERDE:\s*([^\]]+)\]/gi, '<span class="text-green-500 font-bold">🟢 $1</span>')
+        .replace(/\[AMARILLO:\s*([^\]]+)\]/gi, '<span class="text-yellow-500 font-bold">🟡 $1</span>')
+        .replace(/\[ROJO:\s*([^\]]+)\]/gi, '<span class="text-red-500 font-bold">🔴 $1</span>');
+    }
+
+    function scrollToBottom() {
+      if (terminalStdoutContainer) {
+        setTimeout(() => {
+          terminalStdoutContainer.scrollTop = terminalStdoutContainer.scrollHeight;
+        }, 50);
+      }
+    }
+
+    function appendMessage(role, text) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'mt-6 border-t border-border-subtle pt-4';
+      if (role === 'user') {
+        msgDiv.innerHTML = `<div class="text-accent font-bold">> [ USUARIO ]</div><div class="mt-1">${text}</div>`;
+      } else if (role === 'system') {
+        msgDiv.innerHTML = `<div class="text-main font-bold">> [ MONEYPENNY ]</div><div class="mt-2 markdown-body max-w-none text-sm">${marked.parse(formatTokens(text))}</div>`;
+      } else if (role === 'error') {
+        msgDiv.innerHTML = `<div class="text-red-500 font-bold">> [ FALLO CRÍTICO ]</div><div class="mt-1 text-red-500">${text}</div>`;
+      }
+      chatHistory?.appendChild(msgDiv);
+      scrollToBottom();
+    }
+
+    function showLoading() {
+      loadingIndicator?.classList.remove('hidden');
+      if (loadingIndicator) loadingIndicator.innerHTML = '> Procesando análisis neuronal...';
+      scrollToBottom();
+    }
+
+    function hideLoading() {
+      loadingIndicator?.classList.add('hidden');
+    }
+
+    async function handleRequest(endpoint, bodyParams, userPromptDisplay) {
+      if (isProcessing) return;
+      isProcessing = true;
+      if (chatInput) chatInput.disabled = true;
+      if (chatSubmit) {
+        chatSubmit.disabled = true;
+        chatSubmit.classList.add('opacity-50', 'cursor-not-allowed');
+      }
+
+      triggerButtons.forEach(btn => {
+        (btn as HTMLButtonElement).disabled = true;
+        btn.classList.add('opacity-40', 'cursor-not-allowed');
+      });
+
+      appendMessage('user', userPromptDisplay);
+      showLoading();
+
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyParams)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Error desconocido del agente.');
+        }
+
+        const replyContent = data.analysis || data.reply;
+        appendMessage('system', replyContent);
+
+      } catch (err: any) {
+        appendMessage('error', err.message);
+      } finally {
+        hideLoading();
+        isProcessing = false;
+        if (chatInput) chatInput.disabled = false;
+        if (chatSubmit) {
+          chatSubmit.disabled = false;
+          chatSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+        
+        triggerButtons.forEach(btn => {
+          (btn as HTMLButtonElement).disabled = false;
+          btn.classList.remove('opacity-40', 'cursor-not-allowed');
+        });
+        if (chatInput) chatInput.focus();
+      }
+    }
+
+    // Bind chips
+    triggerButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const type = btn.getAttribute('data-type');
+        let label = btn.textContent?.trim().replace(/\[/g, '').replace(/\]/g, '').trim() || type;
+        handleRequest('/api/analysis', { type }, `Ejecutando auditoría: ${label}`);
+      });
+    });
+
+    // Bind chat form
+    chatForm?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!chatInput) return;
+      const message = chatInput.value.trim();
+      if (!message) return;
+      
+      chatInput.value = '';
+      handleRequest('/api/chat', { message }, message);
+    });
+
+  });
+</script>

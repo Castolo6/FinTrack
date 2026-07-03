@@ -1,0 +1,283 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { db } from '../lib/db';
+import { formatCLP } from '../lib/utils';
+import Sidebar from '../components/Sidebar.astro';
+import MobileTabBar from '../components/MobileTabBar.astro';
+import { getI18n } from '../lib/i18n';
+
+const user = Astro.locals.user;
+const { lang, t } = getI18n(Astro);
+const currency = Astro.cookies.get('currency')?.value || 'CLP';
+
+// Obtener mes actual
+const now = new Date();
+const currentYear = now.getFullYear();
+const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+const startOfMonth = `${currentYear}-${currentMonth}-01`;
+const endOfMonth = `${currentYear}-${currentMonth}-31`;
+
+// Obtener presupuestos configurados y calcular el gasto real de cada uno
+const budgetsList = db.prepare(`
+  SELECT b.id, b.amount as budget_limit, c.name as category_name, c.icon as category_icon, c.id as category_id
+  FROM budgets b
+  JOIN categories c ON b.category_id = c.id
+  WHERE b.start_date = ?
+`).all(startOfMonth) as Array<{
+  id: string;
+  budget_limit: number;
+  category_name: string;
+  category_icon: string;
+  category_id: string;
+}>;
+
+// Mapear presupuestos agregando el gasto real del mes actual
+const budgets = budgetsList.map(b => {
+  const expenseResult = db.prepare(`
+    SELECT SUM(amount) as total FROM transactions 
+    WHERE category_id = ? AND type = 'expense' AND date >= ? AND date <= ? AND deleted_at IS NULL
+  `).get(b.category_id, startOfMonth, endOfMonth) as { total: number | null };
+  
+  const spent = expenseResult?.total || 0;
+  const percent = b.budget_limit > 0 ? Math.min(100, Math.round((spent / b.budget_limit) * 100)) : 0;
+  
+  // Generar barra de progreso ASCII de terminal
+  const bars = Math.min(10, Math.max(0, Math.round(percent / 10)));
+  const progress_bar = '[' + '█'.repeat(bars) + '░'.repeat(10 - bars) + ']';
+
+  return {
+    ...b,
+    spent,
+    percent,
+    progress_bar
+  };
+});
+
+// Categorías de gastos para edición
+const allExpenseCategories = db.prepare(`
+  SELECT id, name, icon FROM categories WHERE type = 'expense' ORDER BY name ASC
+`).all() as Array<{
+  id: string;
+  name: string;
+  icon: string;
+}>;
+---
+
+<Layout title={"FinTrack - " + (lang === 'es' ? 'Presupuestos' : 'Budgets')}>
+  <div class="flex flex-col md:flex-row min-h-screen">
+    
+    <!-- Sidebar / Panel de Control -->
+    <div class="hidden md:flex flex-shrink-0">
+      <Sidebar active="budgets" username={user?.username || 'admin'} />
+    </div>
+    <MobileTabBar active="budgets" />
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-6 pb-24 md:pb-6 space-y-6 overflow-y-auto font-mono">
+      
+      <!-- Top Title Command -->
+      <div class="border-b border-border-subtle pb-4">
+        <h1 class="text-xl text-main font-bold">{t.cat_budgets}</h1>
+        <p class="text-xs text-secondary mt-1">{t.budgets_subtitle}</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Side: Lista de Presupuestos -->
+        <section class="lg:col-span-8 space-y-6">
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>fintrack — budgets_status.log — {budgets.length} {lang === 'es' ? 'activos' : 'active'}</span>
+            </div>
+            <div class="terminal-body space-y-6">
+              {budgets.length === 0 ? (
+                <div class="text-secondary p-2 border border-dashed border-border-subtle bg-bg text-center text-sm">
+                  {lang === 'es' 
+                    ? 'No se han configurado presupuestos mensuales. Utiliza el formulario de la derecha para definir tu primer límite.' 
+                    : 'No monthly budgets configured. Use the form on the right to set your first limit.'}
+                </div>
+              ) : (
+                <div class="space-y-4">
+                  {budgets.map(b => (
+                    <div class="border border-border-subtle p-4 bg-bg-subtle text-sm">
+                      <div class="flex justify-between font-bold mb-2">
+                        <span class="text-main">{b.category_icon} {b.category_name}</span>
+                        <span class="text-secondary">
+                          {formatCLP(b.spent, currency)} / <span class="text-main">{formatCLP(b.budget_limit, currency)}</span>
+                        </span>
+                      </div>
+                      
+                      {/* Barra de progreso */}
+                      <div class="flex items-center gap-4 text-xs font-mono">
+                        <span class="text-accent">{b.progress_bar}</span>
+                        <span class={b.percent >= 100 ? 'text-red-500 font-bold' : b.percent >= 80 ? 'text-yellow-500' : 'text-green-500'}>
+                          {b.percent}% {b.percent >= 100 ? (lang === 'es' ? '[EXCEDIDO]' : '[EXCEEDED]') : ''}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <!-- Right Side: Configurar Presupuesto -->
+        <aside class="lg:col-span-4 space-y-6">
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>{t.write_budget_sh}</span>
+            </div>
+            <div class="terminal-body text-xs space-y-3">
+              <form id="budget-form" class="space-y-3">
+                <div>
+                  <label class="block text-secondary mb-1">{t.label_category}</label>
+                  <select id="budget-category" required class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent">
+                    {allExpenseCategories.map(cat => (
+                      <option value={cat.id}>{cat.icon} {cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-secondary mb-1">{lang === 'es' ? 'LÍMITE MENSUAL' : 'MONTHLY LIMIT'}</label>
+                  <input 
+                    type="number" 
+                    id="budget-amount" 
+                    step="0.01" 
+                    required 
+                    placeholder="0.00" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" 
+                  />
+                </div>
+
+                <button 
+                  type="submit" 
+                  class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 transition-colors cursor-pointer"
+                >
+                  {t.btn_set}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Formulario Crear Categoría -->
+          <div class="terminal-window m-0 mt-6">
+            <div class="terminal-header border-accent/50 text-accent">
+              <span>./create_category.sh</span>
+            </div>
+            <div class="terminal-body text-xs space-y-3">
+              <form id="category-form" class="space-y-3">
+                <div>
+                  <label class="block text-secondary mb-1">{lang === 'es' ? 'NOMBRE CATEGORÍA' : 'CATEGORY NAME'}</label>
+                  <input type="text" id="cat-name" required placeholder="ej: Mascotas" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" />
+                </div>
+                <div class="relative">
+                  <label class="block text-secondary mb-1">{lang === 'es' ? 'ICONO (EMOJI)' : 'ICON (EMOJI)'}</label>
+                  <input type="text" id="cat-icon" required readonly placeholder="Haz clic para elegir -> 🐶" class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent cursor-pointer" />
+                  <div id="emoji-picker-container" class="mt-2 hidden w-full flex justify-center">
+                    <emoji-picker class="dark"></emoji-picker>
+                  </div>
+                </div>
+                <button type="submit" class="w-full bg-accent hover:bg-accent/80 text-bg font-bold py-2 transition-colors cursor-pointer uppercase">
+                  {lang === 'es' ? 'CREAR CATEGORÍA' : 'CREATE CATEGORY'}
+                </button>
+              </form>
+            </div>
+          </div>
+        </aside>
+
+      </div>
+
+    </main>
+  </div>
+</Layout>
+
+<script>
+  import 'emoji-picker-element';
+  import es from 'emoji-picker-element/i18n/es';
+
+  document.addEventListener('astro:page-load', () => {
+const form = document.getElementById('budget-form');
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const confirmed = await window.FinTrackConfirm('¿Confirmar establecimiento de presupuesto?');
+    if (!confirmed) return;
+
+    const category_id = (document.getElementById('budget-category') as HTMLSelectElement).value;
+    const amount = parseFloat((document.getElementById('budget-amount') as HTMLInputElement).value);
+
+    try {
+      const response = await fetch('/api/budgets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category_id, amount })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error al guardar el presupuesto.');
+      }
+
+      window.location.reload();
+    } catch (err: any) {
+      window.FinTrackAlert(`> ERROR: ${err.message}`);
+    }
+  });
+
+  const catForm = document.getElementById('category-form');
+  const catIconInput = document.getElementById('cat-icon') as HTMLInputElement;
+  const emojiContainer = document.getElementById('emoji-picker-container');
+  const picker = document.querySelector('emoji-picker') as any;
+
+  // Emoji picker logic
+  if (catIconInput && emojiContainer && picker) {
+    picker.i18n = es;
+
+    catIconInput.addEventListener('click', (e) => {
+      e.stopPropagation();
+      emojiContainer.classList.toggle('hidden');
+    });
+
+    picker.addEventListener('emoji-click', (e: any) => {
+      catIconInput.value = e.detail.unicode;
+      emojiContainer.classList.add('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!emojiContainer.contains(e.target as Node) && e.target !== catIconInput) {
+        emojiContainer.classList.add('hidden');
+      }
+    });
+  }
+
+  catForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const confirmed = await window.FinTrackConfirm('¿Confirmar creación de categoría?');
+    if (!confirmed) return;
+
+    const name = (document.getElementById('cat-name') as HTMLInputElement).value;
+    const icon = (document.getElementById('cat-icon') as HTMLInputElement).value;
+
+    try {
+      const response = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, icon, type: 'expense', color: '#ef4444' })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error al crear la categoría.');
+      }
+
+      window.location.reload();
+    } catch (err: any) {
+      window.FinTrackAlert(`> ERROR: ${err.message}`);
+    }
+  });
+  });
+</script>

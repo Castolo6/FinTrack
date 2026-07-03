@@ -1,0 +1,531 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { db } from '../lib/db';
+import { formatCLP } from '../lib/utils';
+import Sidebar from '../components/Sidebar.astro';
+import { getI18n } from '../lib/i18n';
+
+const user = Astro.locals.user;
+const { lang, t } = getI18n(Astro);
+const currency = Astro.cookies.get('currency')?.value || 'CLP';
+
+// Obtener objetivos de ahorro
+const goalsList = db.prepare(`
+  SELECT * FROM saving_goals 
+  WHERE deleted_at IS NULL
+  ORDER BY created_at DESC
+`).all() as Array<{
+  id: string;
+  name: string;
+  target_amount: number;
+  current_amount: number;
+  saving_platform: string | null;
+  deadline: string | null;
+}>;
+
+// Obtener cuentas activas para relacionar transacciones
+const accounts = db.prepare('SELECT id, name, balance FROM accounts ORDER BY name ASC').all() as Array<{
+  id: string;
+  name: string;
+  balance: number;
+}>;
+
+// Mapear porcentajes y barras de progreso ASCII
+const goals = goalsList.map(g => {
+  const percent = g.target_amount > 0 ? Math.min(100, Math.round((g.current_amount / g.target_amount) * 100)) : 0;
+  const bars = Math.min(10, Math.max(0, Math.round(percent / 10)));
+  const progress_bar = '[' + '█'.repeat(bars) + '░'.repeat(10 - bars) + ']';
+
+  return {
+    ...g,
+    percent,
+    progress_bar
+  };
+});
+---
+
+<Layout title={"FinTrack - " + (lang === 'es' ? 'Objetivos y Bolsillos' : 'Savings Goals')}>
+  <div class="flex flex-col md:flex-row min-h-screen">
+    
+    <!-- Sidebar / Panel de Control -->
+    <Sidebar active="goals" username={user?.username || 'admin'} />
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-6 space-y-6 overflow-y-auto font-mono">
+      
+      <!-- Top Title Command -->
+      <div class="border-b border-border-subtle pb-4">
+        <h1 class="text-xl text-main font-bold">{t.ls_goals}</h1>
+        <p class="text-xs text-secondary mt-1">{t.goals_subtitle}</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Side: Lista de Objetivos/Bolsillos -->
+        <section class="lg:col-span-8 space-y-6">
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>fintrack — goals_progress.log — {goals.length} {lang === 'es' ? 'activos' : 'active'}</span>
+            </div>
+            <div class="terminal-body space-y-6">
+              {goals.length === 0 ? (
+                <div class="text-secondary p-2 border border-dashed border-border-subtle bg-bg text-center text-sm">
+                  {t.no_goals}
+                </div>
+              ) : (
+                <div class="space-y-6">
+                  {goals.map(g => (
+                    <div class="border border-border-subtle p-4 bg-bg-subtle text-sm space-y-3">
+                      <div class="flex flex-wrap justify-between gap-2 font-bold">
+                        <span class="text-main">{g.name}</span>
+                        <span class="text-secondary">
+                          {formatCLP(g.current_amount, currency)} / <span class="text-main">{formatCLP(g.target_amount, currency)}</span>
+                        </span>
+                      </div>
+                      
+                      <!-- Meta / Plazo y Plataforma -->
+                      <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-text">
+                        {g.saving_platform && (
+                          <div>{lang === 'es' ? 'APLICACIÓN' : 'PLATFORM'}: <span class="text-secondary font-bold">{g.saving_platform.toUpperCase()}</span></div>
+                        )}
+                        {g.deadline && (
+                          <div>{lang === 'es' ? 'PLAZO LÍMITE' : 'DEADLINE'}: {g.deadline}</div>
+                        )}
+                      </div>
+
+                      {/* Barra de progreso */}
+                      <div class="flex items-center gap-4 text-xs">
+                        <span class="text-accent">{g.progress_bar}</span>
+                        <span class={g.percent >= 100 ? 'text-green-500 font-bold' : 'text-secondary'}>
+                          {g.percent}% {g.percent >= 100 ? (lang === 'es' ? '[COMPLETADO 🎉]' : '[COMPLETED 🎉]') : ''}
+                        </span>
+                      </div>
+
+                      <!-- Acciones rápidas de depósito/retiro -->
+                      <div class="border-t border-border-subtle pt-3 mt-2 flex flex-wrap items-center justify-between gap-4 text-xs">
+                        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                          {accounts.length === 0 ? (
+                            <span class="text-secondary text-[10px]">{lang === 'es' ? '[Crea una cuenta para operar]' : '[Create an account to operate]'}</span>
+                          ) : (
+                            <div class="flex flex-wrap items-center gap-2 w-full">
+                              <div class="flex gap-2 w-full sm:w-auto">
+                                <input 
+                                  type="number" 
+                                  placeholder={lang === 'es' ? 'Monto' : 'Amount'} 
+                                  id={`amount-${g.id}`}
+                                  class="w-24 bg-bg border border-border-main text-main p-1 focus:outline-none focus:border-accent text-xs flex-1 sm:flex-initial" 
+                                />
+                                <select 
+                                  id={`account-${g.id}`}
+                                  class="bg-bg border border-border-main text-main p-1 focus:outline-none focus:border-accent text-xs max-w-[160px] flex-1 sm:flex-initial"
+                                >
+                                  {accounts.map(acc => (
+                                    <option value={acc.id}>{acc.name} ({formatCLP(acc.balance, currency)})</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div class="flex gap-2 w-full sm:w-auto">
+                                <input 
+                                  type="text" 
+                                  placeholder={lang === 'es' ? 'Motivo (para retiro)' : 'Reason (for withdraw)'} 
+                                  id={`reason-${g.id}`}
+                                  class="w-full sm:w-36 bg-bg border border-border-main text-main p-1 focus:outline-none focus:border-accent text-xs flex-1" 
+                                />
+                              </div>
+                              <div class="flex gap-2 w-full sm:w-auto">
+                                <button 
+                                  class="deposit-btn bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-1 px-2 transition-colors cursor-pointer flex-1 sm:flex-initial"
+                                  data-id={g.id}
+                                >
+                                  {t.btn_deposit}
+                                </button>
+                                <button 
+                                  class="withdraw-btn bg-bg border border-border-main text-secondary hover:text-main font-bold py-1 px-2 transition-colors cursor-pointer flex-1 sm:flex-initial"
+                                  data-id={g.id}
+                                >
+                                  {t.btn_withdraw}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div class="flex justify-end w-full sm:w-auto mt-2 sm:mt-0">
+                          <button 
+                            class="delete-btn text-red-500 hover:text-red-300 font-bold underline cursor-pointer bg-transparent border-0"
+                            data-id={g.id}
+                          >
+                            {t.delete}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <!-- Right Side: Crear Bolsillo/Objetivo -->
+        <aside class="lg:col-span-4 space-y-6">
+          <div class="terminal-window m-0">
+            <div class="terminal-header">
+              <span>{t.write_goal_sh}</span>
+            </div>
+            <div class="terminal-body text-xs space-y-3">
+              <form id="goal-form" class="space-y-3">
+                <div>
+                  <label class="block text-secondary mb-1">{t.label_goal_name}</label>
+                  <input 
+                    type="text" 
+                    id="goal-name" 
+                    required 
+                    placeholder="ej: Ahorro Fin de Año, Vacaciones" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" 
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-secondary mb-1">{t.label_goal_target}</label>
+                  <input 
+                    type="number" 
+                    id="goal-target" 
+                    required 
+                    placeholder="ej: 1000000" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" 
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-secondary mb-1">{lang === 'es' ? 'MONTO INICIAL (OPCIONAL)' : 'INITIAL AMOUNT (OPTIONAL)'}</label>
+                  <input 
+                    type="number" 
+                    id="goal-current" 
+                    placeholder="0" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" 
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-secondary mb-1">{lang === 'es' ? 'CUENTA DE ORIGEN (SI HAY MONTO INICIAL)' : 'SOURCE ACCOUNT (IF HAS INITIAL AMOUNT)'}</label>
+                  <select 
+                    id="goal-account" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent"
+                  >
+                    <option value="">{lang === 'es' ? '-- Seleccionar Cuenta --' : '-- Select Account --'}</option>
+                    {accounts.map(acc => (
+                      <option value={acc.id}>{acc.name} ({formatCLP(acc.balance, currency)})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-secondary mb-1">{t.label_goal_platform}</label>
+                  <input 
+                    type="text" 
+                    id="goal-platform" 
+                    placeholder="ej: Fintual, Mercado Pago, Banco" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" 
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-secondary mb-1">{t.label_goal_deadline}</label>
+                  <input 
+                    type="date" 
+                    id="goal-deadline" 
+                    class="w-full bg-surface-main border border-border-main text-main p-2 focus:outline-none focus:border-accent" 
+                  />
+                </div>
+
+                <button 
+                  type="submit" 
+                  class="w-full bg-border-main hover:bg-accent text-bg hover:text-bg font-bold py-2 transition-colors cursor-pointer"
+                >
+                  {t.btn_create}
+                </button>
+              </form>
+            </div>
+          </div>
+        </aside>
+
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Modal de Confirmación Estilo Terminal -->
+  <div id="confirm-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-xs font-mono p-4">
+    <div class="terminal-window w-full max-w-sm m-0 border border-border-main bg-bg">
+      <div class="terminal-header flex justify-between items-center">
+        <span>> confirm --action</span>
+        <button id="modal-close-x" class="text-secondary hover:text-main bg-transparent border-0 cursor-pointer font-bold">[X]</button>
+      </div>
+      <div class="terminal-body space-y-4 p-4 text-xs">
+        <p id="modal-message" class="text-main"></p>
+        <div class="flex justify-end gap-3 pt-2">
+          <button id="modal-cancel-btn" class="bg-bg border border-border-main hover:border-accent text-secondary hover:text-main px-3 py-1.5 transition-colors cursor-pointer uppercase font-bold">
+            {lang === 'es' ? '[ CANCELAR ]' : '[ CANCEL ]'}
+          </button>
+          <button id="modal-confirm-btn" class="bg-border-main hover:bg-accent text-bg hover:text-bg font-bold px-3 py-1.5 transition-colors cursor-pointer uppercase">
+            {t.btn_confirm}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const addListenerOnce = (el: Element | null, event: string, handler: any) => {
+      if (el && !(el as HTMLElement).dataset[`listener_${event}`]) {
+        (el as HTMLElement).dataset[`listener_${event}`] = 'true';
+        el.addEventListener(event, handler);
+      }
+    };
+    
+    const goalForm = document.getElementById('goal-form');
+    addListenerOnce(goalForm, 'submit', async (e: Event) => {
+      e.preventDefault();
+    
+    const confirmed = await window.FinTrackConfirm(isEn ? 'Confirm goal creation?' : '¿Confirmar creación de objetivo?');
+    if (!confirmed) return;
+
+    const name = (document.getElementById('goal-name') as HTMLInputElement).value;
+    const target_amount = parseFloat((document.getElementById('goal-target') as HTMLInputElement).value);
+    const current_amount = parseFloat((document.getElementById('goal-current') as HTMLInputElement).value || '0');
+    const account_id = (document.getElementById('goal-account') as HTMLSelectElement).value;
+    const saving_platform = (document.getElementById('goal-platform') as HTMLInputElement).value;
+    const deadline = (document.getElementById('goal-deadline') as HTMLInputElement).value;
+
+    const isEn = document.cookie.includes('lang=en');
+
+    if (current_amount > 0 && !account_id) {
+      window.FinTrackAlert(isEn ? '> ERROR: Select a source account for the initial amount.' : '> ERROR: Selecciona una cuenta de origen para el monto inicial.');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/goals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, target_amount, current_amount, saving_platform, account_id, deadline })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error.');
+      }
+
+      window.location.reload();
+    } catch (err: any) {
+      window.FinTrackAlert(`> ERROR: ${err.message}`);
+    }
+  });
+
+  // Elementos del Modal
+  const confirmModal = document.getElementById('confirm-modal') as HTMLDivElement;
+  const modalMessage = document.getElementById('modal-message') as HTMLParagraphElement;
+  const modalConfirmBtn = document.getElementById('modal-confirm-btn') as HTMLButtonElement;
+  const modalCancelBtn = document.getElementById('modal-cancel-btn') as HTMLButtonElement;
+  const modalCloseX = document.getElementById('modal-close-x') as HTMLButtonElement;
+
+  let pendingAction: (() => Promise<void>) | null = null;
+
+  function openModal(message: string, action: () => Promise<void>) {
+    if (modalMessage && confirmModal) {
+      modalMessage.textContent = message;
+      pendingAction = action;
+      confirmModal.classList.remove('hidden');
+    }
+  }
+
+  function closeModal() {
+    if (confirmModal) {
+      confirmModal.classList.add('hidden');
+      pendingAction = null;
+    }
+  }
+
+  addListenerOnce(modalCancelBtn, 'click', closeModal);
+  addListenerOnce(modalCloseX, 'click', closeModal);
+  
+  addListenerOnce(modalConfirmBtn, 'click', async () => {
+    if (pendingAction) {
+      modalConfirmBtn.disabled = true;
+      const originalText = modalConfirmBtn.textContent;
+      const isEn = document.cookie.includes('lang=en');
+      modalConfirmBtn.textContent = isEn ? '[ PROCESSING... ]' : '[ PROCESANDO... ]';
+      await pendingAction();
+      modalConfirmBtn.disabled = false;
+      modalConfirmBtn.textContent = originalText;
+      closeModal();
+    }
+  });
+
+  // Depositar Fondos
+  const depositButtons = document.querySelectorAll('.deposit-btn');
+  depositButtons.forEach(btn => {
+    addListenerOnce(btn, 'click', async (e: Event) => {
+      const target = e.target as HTMLButtonElement;
+      const id = target.getAttribute('data-id');
+      if (!id) return;
+
+      const isEn = document.cookie.includes('lang=en');
+      const amountInput = document.getElementById(`amount-${id}`) as HTMLInputElement;
+      const amount = parseFloat(amountInput.value);
+
+      if (isNaN(amount) || amount <= 0) {
+        window.FinTrackAlert(isEn ? '> ERROR: Enter a valid deposit amount.' : '> ERROR: Ingresa un monto de depósito válido.');
+        return;
+      }
+
+      const accountSelect = document.getElementById(`account-${id}`) as HTMLSelectElement;
+      const account_id = accountSelect.value;
+      const accountName = accountSelect.options[accountSelect.selectedIndex].text;
+
+      // Obtener el nombre del bolsillo para el mensaje
+      const goalCard = target.closest('.bg-bg-subtle');
+      const goalName = goalCard?.querySelector('.text-main')?.textContent || 'Pocket';
+
+      const currencyMatch = document.cookie.match(/currency=([^;]+)/);
+      const userCurrency = currencyMatch ? currencyMatch[1] : 'CLP';
+      const locale = userCurrency === 'CLP' 
+        ? 'es-CL' 
+        : userCurrency === 'EUR' 
+          ? 'de-DE' 
+          : userCurrency === 'MXN' || userCurrency === 'COP' || userCurrency === 'ARS'
+            ? 'es-MX'
+            : 'en-US';
+      const formatAmount = amount.toLocaleString(locale, { style: 'currency', currency: userCurrency, minimumFractionDigits: (userCurrency === 'CLP' || userCurrency === 'COP') ? 0 : 2 });
+      const msg = isEn
+        ? `Are you sure you want to DEPOSIT ${formatAmount} from account "${accountName}" into pocket "${goalName}"?`
+        : `¿Estás seguro de que deseas DEPOSITAR ${formatAmount} desde la cuenta "${accountName}" en el bolsillo "${goalName}"?`;
+
+      openModal(msg, async () => {
+        try {
+          const response = await fetch('/api/goals', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, amount, action: 'deposit', account_id })
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Error.');
+          }
+
+          window.location.reload();
+        } catch (err: any) {
+          window.FinTrackAlert(`> ERROR: ${err.message}`);
+        }
+      });
+    });
+  });
+
+  // Retirar Fondos
+  const withdrawButtons = document.querySelectorAll('.withdraw-btn');
+  withdrawButtons.forEach(btn => {
+    addListenerOnce(btn, 'click', async (e: Event) => {
+      const target = e.target as HTMLButtonElement;
+      const id = target.getAttribute('data-id');
+      if (!id) return;
+
+      const isEn = document.cookie.includes('lang=en');
+      const amountInput = document.getElementById(`amount-${id}`) as HTMLInputElement;
+      const amount = parseFloat(amountInput.value);
+
+      if (isNaN(amount) || amount <= 0) {
+        window.FinTrackAlert(isEn ? '> ERROR: Enter a valid withdrawal amount.' : '> ERROR: Ingresa un monto de retiro válido.');
+        return;
+      }
+
+      const accountSelect = document.getElementById(`account-${id}`) as HTMLSelectElement;
+      const account_id = accountSelect.value;
+      const accountName = accountSelect.options[accountSelect.selectedIndex].text;
+
+      const reasonInput = document.getElementById(`reason-${id}`) as HTMLInputElement;
+      const reason = reasonInput.value.trim();
+
+      if (!reason) {
+        window.FinTrackAlert(isEn ? '> ERROR: You must enter a reason or description for withdrawal.' : '> ERROR: Debes ingresar el motivo o descripción del retiro.');
+        return;
+      }
+
+      // Obtener el nombre del bolsillo para el mensaje
+      const goalCard = target.closest('.bg-bg-subtle');
+      const goalName = goalCard?.querySelector('.text-main')?.textContent || 'Pocket';
+
+      const currencyMatch = document.cookie.match(/currency=([^;]+)/);
+      const userCurrency = currencyMatch ? currencyMatch[1] : 'CLP';
+      const locale = userCurrency === 'CLP' 
+        ? 'es-CL' 
+        : userCurrency === 'EUR' 
+          ? 'de-DE' 
+          : userCurrency === 'MXN' || userCurrency === 'COP' || userCurrency === 'ARS'
+            ? 'es-MX'
+            : 'en-US';
+      const formatAmount = amount.toLocaleString(locale, { style: 'currency', currency: userCurrency, minimumFractionDigits: (userCurrency === 'CLP' || userCurrency === 'COP') ? 0 : 2 });
+      const msg = isEn
+        ? `Are you sure you want to WITHDRAW ${formatAmount} from pocket "${goalName}" and deposit it into account "${accountName}"?\nReason: "${reason}"`
+        : `¿Estás seguro de que deseas RETIRAR ${formatAmount} del bolsillo "${goalName}" y depositarlo en la cuenta "${accountName}"?\nMotivo: "${reason}"`;
+
+      openModal(msg, async () => {
+        try {
+          const response = await fetch('/api/goals', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, amount, action: 'withdraw', account_id, reason })
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Error.');
+          }
+
+          window.location.reload();
+        } catch (err: any) {
+          window.FinTrackAlert(`> ERROR: ${err.message}`);
+        }
+      });
+    });
+  });
+
+  // Eliminar Objetivo
+  const deleteButtons = document.querySelectorAll('.delete-btn');
+  deleteButtons.forEach(btn => {
+    addListenerOnce(btn, 'click', async (e: Event) => {
+      const target = e.target as HTMLButtonElement;
+      const id = target.getAttribute('data-id');
+      if (!id) return;
+
+      const isEn = document.cookie.includes('lang=en');
+      const goalCard = target.closest('.bg-bg-subtle');
+      const goalName = goalCard?.querySelector('.text-main')?.textContent || 'Pocket';
+
+      const msg = isEn
+        ? `Are you sure you want to DELETE pocket "${goalName}" permanently?`
+        : `¿Estás seguro de que deseas ELIMINAR el bolsillo "${goalName}" permanentemente?`;
+
+      openModal(msg, async () => {
+        try {
+          const response = await fetch(`/api/goals/${id}`, {
+            method: 'DELETE',
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Error.');
+          }
+
+          window.location.reload();
+        } catch (err: any) {
+          window.FinTrackAlert(`> ERROR: ${err.message}`);
+        }
+      });
+    });
+  });
+  });
+</script>
