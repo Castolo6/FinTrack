@@ -1,124 +1,114 @@
-# 💻 FinTrack — Terminal Personal Finance Manager
+# 💻 FinTrack — Tu Asistente Financiero Personal Privado
 
-FinTrack es un gestor de finanzas personales local-first diseñado con una estética retro de terminal hacker inspirado en CachyOS (monocromo, tipografía monoespaciada, bordes planos, colores cian, verde bosque y fondo azul-gris oscuro).
+¡Bienvenido a **FinTrack**! Una aplicación web diseñada para que tomes el control absoluto de tus finanzas personales. A diferencia de otras aplicaciones financieras, FinTrack vive **100% en tu propia computadora o red local**, lo que significa que **nadie más tiene acceso a tus datos financieros**.
 
-Ofrece total control, privacidad y soberanía de datos al procesar la base de datos de manera local y realizar auditorías de inteligencia artificial sin conexión a internet.
-
----
-
-## 🔍 ¿Qué es?
-FinTrack es una aplicación web de servidor (Astro SSR) con arquitectura local-first. Está pensada para ingenieros de software, entusiastas de la terminal y usuarios que valoran la privacidad de sus registros financieros. En lugar de delegar tus datos a la nube, FinTrack opera sobre una base de datos SQLite local y ejecuta una agente inteligente local (Moneypenny) a través de Ollama.
+Además, cuenta con una estética única estilo "terminal hacker" retro y un asistente de Inteligencia Artificial que te ayuda a auditar tus gastos.
 
 ---
 
-## 🛠️ ¿Qué hace? (Funcionalidades)
+## 🔍 ¿Para qué sirve?
 
-1. **Dashboard de Consola (`cat ./transacciones.log`)**:
-   * Métricas generales (saldos, ingresos, egresos, presupuestos y ahorros).
-   * Visualización en tiempo real de transacciones filtradas automáticamente por el mes seleccionado.
+FinTrack es una herramienta completa para tu día a día, y te ayuda a:
 
-2. **Gestión de Transacciones**:
-   * Registro rápido de ingresos y egresos.
-   * Filtro interactivo por mes en formato de calendario retro.
-   * Contador dinámico de registros coincidentes.
-
-3. **Módulo de Presupuestos**:
-   * Límites de gasto por categoría con restablecimiento automático mensual.
-   * Barras de progreso visuales en ASCII (`[████░░░░░░]`) y alertas de sobrefacturación.
-
-4. **Visualización Gráfica (`charts.sh`)**:
-   * Gráficos interactivos de pastel y barras para categorización de gastos e ingresos.
-   * Selector dinámico para alternar entre flujos de Gastos/Egresos e Ingresos/Entradas.
-
-5. **Bolsillos y Objetivos de Ahorro (`saving_goals.db`)**:
-   * Creación de objetivos con plazos límite (deadlines) y aplicaciones/plataformas de ahorro específicas.
-   * Acciones rápidas en un solo paso para `[DEPOSITAR]` y `[RETIRAR]` saldo vinculados a cuentas reales.
-
-6. **Auditoría Financiera de IA (`moneypenny --analyze`)**:
-   * Auditoría inteligente e interactiva dividida en 4 áreas de prompt específicas:
-     * **Situación Actual**: Análisis estructural de capital y presupuestos mensuales.
-     * **Auditoría de Fugas**: Detección de consumos hormiga, ineficiencias y proyección de su impacto anual.
-     * **Planes de Mejora**: Sugerencias concretas y hábitos frugales a corto plazo.
-     * **Viabilidad de Objetivos**: Cálculo porcentual de probabilidad de éxito, justificación lógica y cálculo del aporte mensual exacto en CLP necesario para cumplir cada meta en su plazo.
-   * **Persistencia (Caché)**: Almacena los reportes en SQLite para consulta instantánea fuera de línea y ofrece un disparador para `[REGENERAR_REPORTE]`.
-
-7. **Respaldos y Migraciones**:
-   * Exportación instantánea de la base de datos completa a un archivo JSON portable.
-   * Restauración y mezcla de datos mediante carga de archivos de respaldo.
-
-8. **Navegación Móvil e Interfaz Responsiva**:
-   * Barra de navegación inferior dinámica (`MobileTabBar`) para accesibilidad rápida en smartphones.
-   * Diseño completamente adaptativo a cualquier tamaño de pantalla manteniendo la estética retro de consola.
+1. **Registrar ingresos y gastos** de forma rápida y sencilla.
+2. **Definir presupuestos mensuales** para que sepas exactamente cuánto puedes gastar en cada categoría (ej. Comida, Transporte, Ocio).
+3. **Fijar objetivos de ahorro** (bolsillos) para tus metas futuras, calculando de manera automática cuánto necesitas ahorrar cada mes para lograrlo a tiempo.
+4. **Obtener consejos con Inteligencia Artificial**: Un agente inteligente local llamado "Moneypenny" analiza tus hábitos de consumo, detecta "gastos hormiga" y te sugiere cómo ahorrar más.
+5. **Visualizar tus finanzas**: Con gráficos interactivos y claros para entender a dónde se va tu dinero.
 
 ---
 
-## ⚙️ ¿Con qué lo hace? (Tecnologías)
+## 🏗️ ¿Cómo funciona y cómo se construyó?
 
-* **Core Framework**: [Astro](https://astro.build/) configurado en modo SSR (Server-Side Rendering) con adaptador independiente `@astrojs/node` ejecutándose en el puerto `4321`.
-* **Base de Datos**: [SQLite](https://sqlite.org/) a través del driver nativo síncrono ultra-rápido `better-sqlite3`.
-* **Motor Estilístico**: [TailwindCSS](https://tailwindcss.com/) y CSS nativo personalizado, configurando un esquema `color-scheme: dark` para adaptar los menús nativos del navegador al tema oscuro.
-* **Componentes Interactivos**: [React](https://react.dev/) para la reactividad de gráficas e inputs dinámicos de calendario.
-* **Inteligencia Actoral Local**: [Ollama](https://ollama.com/) ejecutando el modelo **`gemma2:9b`** con el nombre de agente **`Moneypenny`**.
+FinTrack está construido con tecnologías modernas pero enfocadas en tu privacidad y en la velocidad. No dependes de servidores de terceros ni de nubes públicas para procesar tus datos.
+
+```mermaid
+graph TD
+    Usuario["👤 Tú (desde PC o Celular)"]
+    FinTrack["💻 FinTrack Server (Astro + Node.js)"]
+    DB[("🗄️ Base de Datos Local (SQLite)")]
+    AI["🧠 Inteligencia Artificial (Ollama - Gemma2)"]
+    Drive["☁️ Google Drive (Solo para copias de seguridad)"]
+
+    Usuario <-->|Navegador Web| FinTrack
+    FinTrack <-->|Guarda y lee tus gastos| DB
+    FinTrack <-->|Analiza tus finanzas| AI
+    FinTrack -.->|Sube backups automáticos| Drive
+```
+
+**Tecnologías principales con las que fue construido:**
+* **Interfaz y Servidor:** Creado con **Astro**, **React** y **TailwindCSS** para ser extremadamente rápido y verse increíble tanto en celulares como en pantallas grandes.
+* **Almacenamiento:** **SQLite**, una base de datos ultrarrápida que guarda todo en un solo archivo dentro de tu computadora (`fintrack.db`).
+* **Inteligencia Artificial:** **Ollama**, que ejecuta un cerebro artificial avanzado (Gemma2 de 9 billones de parámetros) en tu propio equipo, sin enviar tus datos a internet.
 
 ---
 
-## 🚀 Instalación y Despliegue Local
+## 🚀 ¿Cómo implementarlo y usarlo? (Guía de Instalación)
 
-### 1. Requisitos Previos
-Asegúrate de tener instalados:
-* **Node.js** v18 o superior.
-* **Ollama** ejecutándose de manera local (`ollama serve`).
+Para usar FinTrack en tu propia computadora, sigue estos pasos pensados para cualquier tipo de usuario.
 
-### 2. Configurar la IA Local (Gemma2) paso a paso
-Para habilitar las funciones de auditoría inteligente y análisis financiero, necesitas configurar Ollama con el modelo `gemma2`.
-1. Descarga e instala [Ollama](https://ollama.com/) en tu sistema.
-2. Abre tu terminal y ejecuta el comando para descargar el modelo:
+### 1. Requisitos Iniciales
+Necesitas tener instalados en tu computadora los siguientes programas gratuitos:
+* **Node.js** (versión 18 o superior).
+* **Git** (para poder descargar el código).
+* **Ollama** (para habilitar el analista de Inteligencia Artificial).
+
+### 2. Configurar la Inteligencia Artificial (Ollama)
+FinTrack usa un modelo de IA gratuito llamado `gemma2` para analizar tus gastos de forma privada.
+1. Descarga e instala [Ollama](https://ollama.com/) en tu equipo.
+2. Abre tu terminal (línea de comandos) y ejecuta:
    ```bash
    ollama pull gemma2:9b
    ```
-3. Verifica que el modelo se haya instalado correctamente:
-   ```bash
-   ollama list
-   ```
-   *(Asegúrate de que `gemma2:9b` aparezca en la lista)*.
-4. Mantén Ollama en ejecución en segundo plano (`ollama serve` o abriendo la aplicación). FinTrack se conectará automáticamente a su API local.
+   *(Esto descargará el "cerebro" de la IA, puede tardar algunos minutos dependiendo de tu velocidad de internet).*
+3. Deja la aplicación de Ollama ejecutándose de fondo.
 
-### 3. Configurar Backups en Google Drive
-Para habilitar las copias de seguridad de tu base de datos local hacia la nube:
-1. Ve a la [Consola de Google Cloud](https://console.cloud.google.com/) y crea un nuevo proyecto.
-2. Habilita la **Google Drive API** dentro del panel "APIs y Servicios".
-3. Ve a "Credenciales" > "Crear credenciales" > "Cuenta de servicio".
-4. Dentro de la cuenta de servicio creada, genera una nueva clave (Key) en formato **JSON** y descárgala.
-5. Renombra ese archivo a `google-credentials.json` y colócalo en la raíz del proyecto (junto a `package.json`).
-6. Crea una carpeta en tu Google Drive personal para guardar los backups y **compártela** (con permisos de Editor) usando el correo electrónico de tu Cuenta de Servicio.
+### 3. Instalación de FinTrack
+Abre tu terminal y ejecuta estos comandos uno por uno:
 
-### 4. Levantar FinTrack
-1. Clona el repositorio e ingresa a la carpeta del proyecto.
-2. Instala las dependencias de Node:
-   ```bash
-   npm install
-   ```
-3. Ejecuta el servidor de desarrollo local:
-   ```bash
-   npm run dev
-   ```
-4. Abre [http://localhost:4321](http://localhost:4321) en tu navegador.
-5. Sigue las instrucciones en pantalla en el módulo `/setup` para crear tu cuenta de administrador local (las contraseñas se cifran con `bcryptjs` en la base de datos).
+```bash
+# 1. Clona (descarga) el proyecto
+git clone https://github.com/tu-usuario/FinTrack.git
+cd FinTrack
+
+# 2. Instala las herramientas y dependencias necesarias
+npm install
+
+# 3. Construye la aplicación para su uso final
+npm run build
+
+# 4. Inicia el servidor
+npm run start
+```
+¡Listo! Ahora puedes abrir tu navegador favorito y entrar a `http://localhost:3000`.
+
+*(La primera vez que entres, el sistema te pedirá crear una contraseña maestra segura para proteger tu información).*
 
 ---
 
-## 🧞 Comandos de Desarrollo
+## ⚙️ Configuraciones Adicionales Importantes
 
-| Comando | Acción |
-| :--- | :--- |
-| `npm run dev` | Inicia el servidor de desarrollo local en `localhost:4321`. |
-| `npm run build` | Compila la aplicación de producción optimizada en `./dist/`. |
-| `npm run preview` | Previsualiza localmente la compilación de producción. |
+Para aprovechar al máximo FinTrack y asegurar tus datos, te recomendamos hacer estas dos configuraciones:
+
+### A. Copias de Seguridad Automáticas en Google Drive
+Si tu computadora se daña, querrás tener un respaldo de tus datos. FinTrack puede subir una copia de seguridad encriptada directamente a tu Google Drive.
+
+1. Ve a la [Consola de Google Cloud](https://console.cloud.google.com/).
+2. Habilita la API de **Google Drive**.
+3. Crea una **Cuenta de Servicio** y descarga su clave en formato archivo `.json`.
+4. Renombra ese archivo a `google-credentials.json` y guárdalo dentro de la carpeta principal de FinTrack.
+5. En tu Google Drive personal, crea una carpeta vacía para los respaldos y **compártela** (con permisos de editor) con el correo electrónico de la cuenta de servicio que acabas de crear.
+
+### B. Ejecución Permanente 24/7 (Para acceder desde el Celular)
+Si quieres que FinTrack esté siempre encendido en tu computadora para poder ingresar tus gastos desde tu celular (estando conectados al mismo WiFi de tu casa):
+
+1. FinTrack incluye un archivo llamado `DEPLOY.md` con las instrucciones detalladas paso a paso para configurarlo como un "Servicio de Sistema" usando `systemd` (en Linux).
+2. Una vez configurado con ese tutorial, FinTrack arrancará automáticamente si se reinicia tu PC y podrás acceder desde tu celular entrando a la IP de tu computadora (ejemplo: `http://192.168.3.93:3000`).
 
 ---
 
-## 🔒 Privacidad y gitignore
-El archivo `.gitignore` está configurado para evitar la subida accidental de información confidencial a GitHub:
-* `fintrack.db*` (SQLite local con tus transacciones e historial) está ignorado.
-* `.env` y `.env.production` están ignorados.
-* `.vscode/` y archivos `.DS_Store` están ignorados.
+## 🔒 Tu Privacidad Garantizada
+Al usar FinTrack:
+- Tus finanzas y gastos **NO** se envían a servidores de empresas tecnológicas.
+- Tus consultas y auditorías de Inteligencia Artificial se procesan **íntegramente en el procesador de tu propia computadora**.
+- Solo tú decides si deseas hacer copias de seguridad en la nube (Google Drive).

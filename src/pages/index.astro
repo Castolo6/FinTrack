@@ -106,7 +106,7 @@ const accounts = db.prepare('SELECT * FROM accounts ORDER BY name ASC').all() as
   currency: string;
 }>;
 
-// Obtener transacciones recientes (últimas 5 dentro del periodo seleccionado)
+// Obtener transacciones recientes (últimas 10 dentro del periodo seleccionado)
 const recentTransactions = db.prepare(`
   SELECT t.*, a.name as account_name, c.name as category_name, c.icon as category_icon
   FROM transactions t
@@ -114,7 +114,7 @@ const recentTransactions = db.prepare(`
   JOIN categories c ON t.category_id = c.id
   WHERE t.date >= ? AND t.date <= ? AND t.deleted_at IS NULL
   ORDER BY t.date DESC, t.created_at DESC
-  LIMIT 5
+  LIMIT 10
 `).all(startOfMonth, endOfMonth) as Array<{
   id: string;
   amount: number;
@@ -279,7 +279,7 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
               ) : (
                 <div class="grid grid-cols-1 gap-4">
                   {accounts.map(acc => (
-                    <div class="border border-border-subtle p-3 bg-bg-subtle flex justify-between items-center">
+                    <div class="border border-border-subtle p-3 bg-bg-subtle flex justify-between items-center account-card cursor-pointer hover:bg-surface-main transition-colors" data-account-id={acc.id} data-account-name={acc.name} data-account-currency={acc.currency}>
                       <div>
                         <div class="font-bold text-main">{acc.name}</div>
                         <div class="text-xs text-secondary uppercase">
@@ -595,6 +595,36 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
         </div>
       </div>
 
+      <!-- Modal de Transacciones de Cuenta -->
+      <div id="account-transactions-modal" class="fixed inset-0 bg-black/80 hidden z-50 flex items-center justify-center p-4">
+        <div class="terminal-window m-0 w-full max-w-2xl max-h-[80vh] flex flex-col bg-bg border border-border-main">
+          <div class="terminal-header flex justify-between items-center">
+            <span id="modal-account-name">Transacciones</span>
+            <button id="close-account-modal" class="text-secondary hover:text-main bg-transparent border-0 cursor-pointer text-xl" title="Cerrar">&times;</button>
+          </div>
+          <div class="terminal-body font-mono text-sm flex-1 overflow-y-auto p-0">
+            <div id="modal-transactions-loading" class="p-4 text-center text-secondary">Cargando transacciones...</div>
+            <div id="modal-transactions-content" class="hidden">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="border-b border-border-main text-secondary text-xs uppercase bg-bg-subtle">
+                    <th class="py-2 px-3">{t.table_date}</th>
+                    <th class="py-2 px-3">{t.table_category}</th>
+                    <th class="py-2 px-3 text-right">{t.table_amount}</th>
+                  </tr>
+                </thead>
+                <tbody id="modal-transactions-list" class="divide-y divide-border-subtle">
+                  <!-- Rows will be injected here -->
+                </tbody>
+              </table>
+              <div id="modal-transactions-empty" class="hidden p-4 text-center text-secondary">
+                No hay transacciones registradas.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
 </Layout>
@@ -835,6 +865,86 @@ const allocationCategories = db.prepare("SELECT * FROM categories WHERE type = '
       // Limpiar la URL sin recargar la página
       window.history.replaceState({}, document.title, window.location.pathname);
     }
+  }
+
+  // Lógica del modal de cuentas
+  const accountCards = document.querySelectorAll('.account-card');
+  const modal = document.getElementById('account-transactions-modal');
+  const closeBtn = document.getElementById('close-account-modal');
+  const modalTitle = document.getElementById('modal-account-name');
+  const loadingDiv = document.getElementById('modal-transactions-loading');
+  const contentDiv = document.getElementById('modal-transactions-content');
+  const txList = document.getElementById('modal-transactions-list');
+  const emptyDiv = document.getElementById('modal-transactions-empty');
+  
+  const formatMoney = (amount: number, currency: string) => {
+    return new Intl.NumberFormat('es-CL', { style: 'currency', currency: currency }).format(amount);
+  };
+
+  if (modal && closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+    });
+    
+    // Cerrar si hace click fuera del modal
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.classList.add('hidden');
+    });
+
+    accountCards.forEach(card => {
+      card.addEventListener('click', async () => {
+        const id = card.getAttribute('data-account-id');
+        const name = card.getAttribute('data-account-name');
+        const currency = card.getAttribute('data-account-currency') || 'CLP';
+        
+        if (modalTitle) modalTitle.textContent = `Transacciones: ${name}`;
+        modal.classList.remove('hidden');
+        
+        if (loadingDiv) loadingDiv.classList.remove('hidden');
+        if (contentDiv) contentDiv.classList.add('hidden');
+        if (txList) txList.innerHTML = '';
+        if (emptyDiv) emptyDiv.classList.add('hidden');
+
+        try {
+          const res = await fetch(`/api/transactions?account_id=${id}`);
+          if (!res.ok) throw new Error('Error al cargar transacciones');
+          
+          const transactions = await res.json();
+          
+          if (loadingDiv) loadingDiv.classList.add('hidden');
+          if (contentDiv) contentDiv.classList.remove('hidden');
+          
+          if (transactions.length === 0) {
+            if (emptyDiv) emptyDiv.classList.remove('hidden');
+          } else {
+            if (txList) {
+              txList.innerHTML = transactions.map((t: any) => {
+                const isIncome = t.type === 'income' || (t.type === 'transfer' && t.destination_account_id === id);
+                const color = isIncome ? 'text-green-500' : 'text-red-500';
+                const sign = isIncome ? '+' : '-';
+                
+                return `
+                  <tr class="hover:bg-surface-main">
+                    <td class="py-2 px-3 text-xs text-secondary whitespace-nowrap">${t.date}</td>
+                    <td class="py-2 px-3 whitespace-nowrap">
+                      <span class="block">${t.category_icon || ''} ${t.category_name || t.type}</span>
+                      <span class="text-[10px] text-secondary">${t.description || ''}</span>
+                    </td>
+                    <td class="py-2 px-3 text-right font-bold ${color}">
+                      ${sign}${formatMoney(t.amount, currency)}
+                    </td>
+                  </tr>
+                `;
+              }).join('');
+            }
+          }
+        } catch (err) {
+          if (loadingDiv) {
+            loadingDiv.textContent = 'Error al cargar las transacciones.';
+          }
+        }
+      });
+    });
   }
 
   });

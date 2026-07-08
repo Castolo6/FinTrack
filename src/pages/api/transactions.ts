@@ -109,3 +109,39 @@ export const POST: APIRoute = async ({ request, locals }) => {
     );
   }
 };
+
+export const GET: APIRoute = async ({ request, locals }) => {
+  try {
+    if (!locals.user) {
+      return new Response(JSON.stringify({ error: 'No autorizado.' }), { status: 401 });
+    }
+    
+    const url = new URL(request.url);
+    const accountId = url.searchParams.get('account_id');
+    
+    if (!accountId) {
+      return new Response(
+        JSON.stringify({ error: 'account_id es requerido.' }),
+        { status: 400 }
+      );
+    }
+    
+    const transactions = db.prepare(`
+      SELECT t.*, c.name as category_name, c.icon as category_icon, 
+             a1.name as account_name, a2.name as destination_account_name
+      FROM transactions t
+      JOIN accounts a1 ON t.account_id = a1.id
+      LEFT JOIN accounts a2 ON t.destination_account_id = a2.id
+      JOIN categories c ON t.category_id = c.id
+      WHERE (t.account_id = ? OR t.destination_account_id = ?) AND t.deleted_at IS NULL
+      ORDER BY t.date DESC, t.created_at DESC
+    `).all(accountId, accountId);
+    
+    return new Response(JSON.stringify(transactions), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  } catch (error: any) {
+    return new Response(
+      JSON.stringify({ error: 'Error del servidor: ' + error.message }),
+      { status: 500 }
+    );
+  }
+};
