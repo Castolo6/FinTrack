@@ -4,3 +4,4 @@ export 'category.dart';
 export 'goal.dart';
 export 'loan_installment_payment.dart';
 export 'transaction.dart';
+export 'user_profile.dart';

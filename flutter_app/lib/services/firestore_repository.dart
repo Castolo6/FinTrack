@@ -49,6 +49,9 @@ class FirestoreRepository {
   CollectionReference<Map<String, dynamic>> _collection(String name) =>
       _firestore.collection('users').doc(uid).collection(name);
 
+  DocumentReference<Map<String, dynamic>> get _profileDocument =>
+      _firestore.collection('users').doc(uid).collection('profile').doc('main');
+
   Future<FirestoreUserData> loadUserData() async {
     final snapshots = await Future.wait<QuerySnapshot<Map<String, dynamic>>>([
       _collection('accounts').get(),
@@ -70,6 +73,31 @@ class FirestoreRepository {
       loanPayments: snapshots[6].docs.map(_loanPaymentFromDocument).toList(),
     );
   }
+
+  Future<UserProfile?> loadProfile() async {
+    final document = await _profileDocument.get();
+    if (!document.exists) return null;
+    final data = document.data();
+    if (data == null) return null;
+    return UserProfile(
+      userId: uid,
+      displayName: data['displayName'] as String? ?? '',
+      email: data['email'] as String? ?? '',
+      country: data['country'] as String? ?? 'Chile',
+      currency: data['currency'] as String? ?? 'CLP',
+      createdAt: _dateFrom(data['createdAt']),
+      updatedAt: _dateFrom(data['updatedAt']),
+    );
+  }
+
+  Future<void> saveProfile(UserProfile profile) => _profileDocument.set({
+    'displayName': profile.displayName,
+    'email': profile.email,
+    'country': profile.country,
+    'currency': profile.currency,
+    'createdAt': profile.createdAt ?? FieldValue.serverTimestamp(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  }, SetOptions(merge: true));
 
   Future<void> saveAccount(Account value) =>
       _put('accounts', value.id, _accountToMap(value));
@@ -198,9 +226,9 @@ class FirestoreRepository {
     'iconCodePoint': value.icon.codePoint,
     'iconFontFamily': value.icon.fontFamily,
     'iconFontPackage': value.icon.fontPackage,
-        // Store ARGB as text: unsigned ARGB values can exceed signed 32-bit
-        // range and trigger dart2js's unsupported Int64 MethodChannel codec.
-        'color': value.color.toARGB32().toRadixString(16).padLeft(8, '0'),
+    // Store ARGB as text: unsigned ARGB values can exceed signed 32-bit
+    // range and trigger dart2js's unsupported Int64 MethodChannel codec.
+    'color': value.color.toARGB32().toRadixString(16).padLeft(8, '0'),
   };
 
   static Transaction _transactionFromDocument(

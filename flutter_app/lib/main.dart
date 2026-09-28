@@ -12,6 +12,7 @@ import 'screens/budgets_screen.dart';
 import 'screens/categories_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/goals_screen.dart';
+import 'screens/profile_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/statement_reconciliation_screen.dart';
 import 'screens/transactions_screen.dart';
@@ -219,6 +220,11 @@ class HomePage extends StatelessWidget {
       ),
     ];
     final moreDestinations = [
+      AppDestination(
+        label: 'Perfil',
+        icon: Icons.person_outline,
+        screen: const ProfileScreen(),
+      ),
       AppDestination(
         label: 'Objetivos',
         icon: Icons.flag_outlined,
