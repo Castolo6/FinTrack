@@ -1,7 +1,111 @@
+import 'dart:async';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import '../models/app_models.dart';
+import '../services/firestore_repository.dart';
 
 class AppState extends ChangeNotifier {
+  AppState() : _repository = null;
+
+  AppState.forUser(String userId)
+    : _repository = FirestoreRepository(uid: userId),
+      _isLoading = true {
+    // A signed-in account must never be prefilled with the demo user's data.
+    _accounts.clear();
+    _transactions.clear();
+    _budgets.clear();
+    _goals.clear();
+    _goalMovements.clear();
+    _loanInstallmentPayments.clear();
+  }
+
+  final FirestoreRepository? _repository;
+  bool _isLoading = false;
+  String? _loadError;
+  String? _persistenceError;
+
+  bool get isLoading => _isLoading;
+  String? get loadError => _loadError;
+  String? get persistenceError => _persistenceError;
+
+  void clearPersistenceError() {
+    _persistenceError = null;
+    notifyListeners();
+  }
+
+  Future<void> loadFromFirestore() async {
+    final repository = _repository;
+    if (repository == null) return;
+    _isLoading = true;
+    _loadError = null;
+    notifyListeners();
+    try {
+      final data = await repository.loadUserData();
+      _accounts
+        ..clear()
+        ..addAll(data.accounts);
+      _transactions
+        ..clear()
+        ..addAll(data.transactions);
+      _budgets
+        ..clear()
+        ..addAll(data.budgets);
+      _goals
+        ..clear()
+        ..addAll(data.goals);
+      _goalMovements
+        ..clear()
+        ..addAll(data.goalMovements);
+      _loanInstallmentPayments
+        ..clear()
+        ..addAll(data.loanPayments);
+
+      if (data.categories.isNotEmpty) {
+        _categories
+          ..clear()
+          ..addAll(data.categories);
+      } else {
+        // Create starter categories for a brand-new user without demo finances.
+        for (final category in _categories) {
+          await repository.saveCategory(category);
+        }
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Firestore load failed: $error\n$stackTrace');
+      _loadError = _firebaseErrorMessage(error);
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> reloadFromFirestore() => loadFromFirestore();
+
+  void _persist(Future<void>? operation) {
+    if (operation == null) return;
+    unawaited(
+      operation.catchError((Object error) {
+        _persistenceError = _firebaseErrorMessage(error);
+        notifyListeners();
+      }),
+    );
+  }
+
+  String _firebaseErrorMessage(Object error) {
+    if (error is FirebaseException) {
+      if (error.code == 'permission-denied') {
+        return 'Firestore: permisos denegados. Revisa las reglas de seguridad.';
+      }
+      return 'Firebase ${error.plugin} (${error.code}): '
+          '${error.message ?? 'No se pudo completar la operación.'}';
+    }
+    final message = error.toString();
+    if (message.contains('permission-denied')) {
+      return 'Firebase no permitió guardar los datos. Revisa las reglas de Firestore.';
+    }
+    return 'No se pudieron sincronizar los datos con Firebase. Revisa tu conexión e inténtalo de nuevo. Detalle: $message';
+  }
+
   // Sample data. This version is intentionally local and resets on reload.
   final List<Account> _accounts = [
     Account(
@@ -348,30 +452,29 @@ class AppState extends ChangeNotifier {
 
     final transactionId = 'loan-payment-$loanAccountId-$installmentNumber';
     final paidDate = DateTime.now();
-    _transactions.add(
-      Transaction(
-        id: transactionId,
-        description:
-            'Cuota $installmentNumber/${loan.installmentCount} · ${loan.name}',
-        amount: amount,
-        type: TransactionType.payment,
-        date: paidDate,
-        accountId: paidFromAccountId,
-        toAccountId: loanAccountId,
-        notes: 'Pago de cuota de crédito.',
-      ),
+    final transaction = Transaction(
+      id: transactionId,
+      description:
+          'Cuota $installmentNumber/${loan.installmentCount} · ${loan.name}',
+      amount: amount,
+      type: TransactionType.payment,
+      date: paidDate,
+      accountId: paidFromAccountId,
+      toAccountId: loanAccountId,
+      notes: 'Pago de cuota de crédito.',
     );
-    _loanInstallmentPayments.add(
-      LoanInstallmentPayment(
-        id: 'installment-$loanAccountId-$installmentNumber',
-        loanAccountId: loanAccountId,
-        installmentNumber: installmentNumber,
-        transactionId: transactionId,
-        paidFromAccountId: paidFromAccountId,
-        amount: amount,
-        paidDate: paidDate,
-      ),
+    final payment = LoanInstallmentPayment(
+      id: 'installment-$loanAccountId-$installmentNumber',
+      loanAccountId: loanAccountId,
+      installmentNumber: installmentNumber,
+      transactionId: transactionId,
+      paidFromAccountId: paidFromAccountId,
+      amount: amount,
+      paidDate: paidDate,
     );
+    _transactions.add(transaction);
+    _loanInstallmentPayments.add(payment);
+    _persist(_repository?.saveLoanPayment(payment, transaction));
     notifyListeners();
     return true;
   }
@@ -381,11 +484,13 @@ class AppState extends ChangeNotifier {
     if (payment == null) return;
     _loanInstallmentPayments.removeWhere((item) => item.id == payment.id);
     _transactions.removeWhere((item) => item.id == payment.transactionId);
+    _persist(_repository?.deleteLoanPayment(payment));
     notifyListeners();
   }
 
   void addTransaction(Transaction transaction) {
     _transactions.add(transaction);
+    _persist(_repository?.saveTransaction(transaction));
     notifyListeners();
   }
 
@@ -394,6 +499,7 @@ class AppState extends ChangeNotifier {
     final index = _transactions.indexWhere((t) => t.id == transaction.id);
     if (index < 0) return;
     _transactions[index] = transaction;
+    _persist(_repository?.saveTransaction(transaction));
     notifyListeners();
   }
 
@@ -403,11 +509,13 @@ class AppState extends ChangeNotifier {
     );
     if (scheduledPayment) return;
     _transactions.removeWhere((t) => t.id == id);
+    _persist(_repository?.deleteTransaction(id));
     notifyListeners();
   }
 
   void addAccount(Account account) {
     _accounts.add(account);
+    _persist(_repository?.saveAccount(account));
     notifyListeners();
   }
 
@@ -415,6 +523,7 @@ class AppState extends ChangeNotifier {
     final index = _accounts.indexWhere((a) => a.id == account.id);
     if (index < 0) return;
     _accounts[index] = account;
+    _persist(_repository?.saveAccount(account));
     notifyListeners();
   }
 
@@ -426,6 +535,7 @@ class AppState extends ChangeNotifier {
     final inGoals = _goalMovements.any((m) => m.accountId == id);
     if (inTransactions || inGoals) return false;
     _accounts.removeWhere((a) => a.id == id);
+    _persist(_repository?.deleteAccount(id));
     notifyListeners();
     return true;
   }
@@ -438,6 +548,7 @@ class AppState extends ChangeNotifier {
     );
     if (exists) return false;
     _budgets.add(budget);
+    _persist(_repository?.saveBudget(budget));
     notifyListeners();
     return true;
   }
@@ -453,17 +564,20 @@ class AppState extends ChangeNotifier {
     final index = _budgets.indexWhere((b) => b.id == budget.id);
     if (index < 0) return false;
     _budgets[index] = budget;
+    _persist(_repository?.saveBudget(budget));
     notifyListeners();
     return true;
   }
 
   void deleteBudget(String id) {
     _budgets.removeWhere((b) => b.id == id);
+    _persist(_repository?.deleteBudget(id));
     notifyListeners();
   }
 
   void addGoal(Goal goal) {
     _goals.add(goal);
+    _persist(_repository?.saveGoal(goal));
     notifyListeners();
   }
 
@@ -471,12 +585,24 @@ class AppState extends ChangeNotifier {
     final index = _goals.indexWhere((g) => g.id == goal.id);
     if (index < 0) return;
     _goals[index] = goal;
+    _persist(_repository?.saveGoal(goal));
     notifyListeners();
   }
 
   void deleteGoal(String id) {
     _goals.removeWhere((g) => g.id == id);
+    final removedGoalMovements = _goalMovements
+        .where((m) => m.goalId == id)
+        .toList();
     _goalMovements.removeWhere((m) => m.goalId == id);
+    _persist(
+      _repository?.deleteGoal(
+        id,
+        movementIds: removedGoalMovements
+            .map((movement) => movement.id)
+            .toList(),
+      ),
+    );
     for (var i = 0; i < _transactions.length; i++) {
       final t = _transactions[i];
       if (t.goalId == id) {
@@ -491,6 +617,7 @@ class AppState extends ChangeNotifier {
           categoryId: t.categoryId,
           notes: t.notes,
         );
+        _persist(_repository?.saveTransaction(_transactions[i]));
       }
     }
     notifyListeners();
@@ -498,6 +625,7 @@ class AppState extends ChangeNotifier {
 
   void addGoalMovement(GoalMovement movement) {
     _goalMovements.add(movement);
+    _persist(_repository?.saveGoalMovement(movement));
     notifyListeners();
   }
 
@@ -505,16 +633,19 @@ class AppState extends ChangeNotifier {
     final index = _goalMovements.indexWhere((m) => m.id == movement.id);
     if (index < 0) return;
     _goalMovements[index] = movement;
+    _persist(_repository?.saveGoalMovement(movement));
     notifyListeners();
   }
 
   void deleteGoalMovement(String id) {
     _goalMovements.removeWhere((m) => m.id == id);
+    _persist(_repository?.deleteGoalMovement(id));
     notifyListeners();
   }
 
   void addCategory(Category category) {
     _categories.add(category);
+    _persist(_repository?.saveCategory(category));
     notifyListeners();
   }
 
@@ -522,6 +653,7 @@ class AppState extends ChangeNotifier {
     final index = _categories.indexWhere((c) => c.id == category.id);
     if (index < 0) return;
     _categories[index] = category;
+    _persist(_repository?.saveCategory(category));
     notifyListeners();
   }
 
@@ -530,6 +662,7 @@ class AppState extends ChangeNotifier {
     final usedByBudgets = _budgets.any((b) => b.categoryId == id);
     if (usedByTransactions || usedByBudgets) return false;
     _categories.removeWhere((c) => c.id == id);
+    _persist(_repository?.deleteCategoryDocuments(id));
     notifyListeners();
     return true;
   }
