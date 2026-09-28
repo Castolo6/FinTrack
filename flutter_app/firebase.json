@@ -1,0 +1,18 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "flutter": {
+    "platforms": {
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "fintrack-personal-cl-20260928",
+          "configurations": {
+            "web": "1:794072745716:web:4aab43afbddb44c8cec0a1"
+          }
+        }
+      }
+    }
+  }
+}
