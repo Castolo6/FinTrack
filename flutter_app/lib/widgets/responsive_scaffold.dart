@@ -17,6 +17,8 @@ class ResponsiveScaffold extends StatefulWidget {
   final List<AppDestination> destinations;
   final List<AppDestination>? moreDestinations;
   final FloatingActionButton? floatingActionButton;
+  final VoidCallback? onSignOut;
+  final Widget? banner;
 
   const ResponsiveScaffold({
     super.key,
@@ -24,6 +26,8 @@ class ResponsiveScaffold extends StatefulWidget {
     required this.destinations,
     this.moreDestinations,
     this.floatingActionButton,
+    this.onSignOut,
+    this.banner,
   });
 
   @override
@@ -90,6 +94,12 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
                     onPressed: () =>
                         widget.floatingActionButton!.onPressed?.call(),
                   ),
+                if (widget.onSignOut != null && size.width >= 260)
+                  IconButton(
+                    icon: const Icon(Icons.logout),
+                    tooltip: 'Cerrar sesión',
+                    onPressed: widget.onSignOut,
+                  ),
               ],
             ),
       body: isDesktop
@@ -112,7 +122,19 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
                 Expanded(
                   child: Column(
                     children: [
-                      AppBar(title: Text(widget.title)),
+                      AppBar(
+                        title: Text(widget.title),
+                        actions: widget.onSignOut == null
+                            ? null
+                            : [
+                                IconButton(
+                                  icon: const Icon(Icons.logout),
+                                  tooltip: 'Cerrar sesión',
+                                  onPressed: widget.onSignOut,
+                                ),
+                              ],
+                      ),
+                      if (widget.banner != null) widget.banner!,
                       Expanded(
                         child: widget.destinations[_selectedIndex].screen,
                       ),
@@ -121,7 +143,16 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
                 ),
               ],
             )
-          : SafeArea(child: mobileDestinations[_selectedIndex].screen),
+          : Column(
+              children: [
+                if (widget.banner != null) widget.banner!,
+                Expanded(
+                  child: SafeArea(
+                    child: mobileDestinations[_selectedIndex].screen,
+                  ),
+                ),
+              ],
+            ),
       bottomNavigationBar: isDesktop
           ? null
           : NavigationBar(
