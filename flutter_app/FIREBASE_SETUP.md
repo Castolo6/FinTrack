@@ -41,6 +41,7 @@ users/{uid}/budgets
 users/{uid}/goals
 users/{uid}/goalMovements
 users/{uid}/loanInstallmentPayments
+users/{uid}/profile/main
 ```
 
 La configuración web de Firebase es pública por diseño; la protección de datos se aplica con las reglas de Firestore, no ocultando la API key del cliente.

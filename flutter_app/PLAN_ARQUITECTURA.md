@@ -174,7 +174,7 @@ La comparación con texto pegado puede ser la primera versión: permite validar 
 
 `flutter_app/` contiene un prototipo funcional con tema oscuro Material 3 e Inter, navegación responsive, CRUD local de cuentas, movimientos, presupuestos, objetivos y categorías, transferencias, pagos de tarjetas y créditos en cuotas, comparación de texto pegado de estados de cuenta y un módulo de reportes con rango de fechas, gráficos e indicadores.
 
-La aplicación ya inicializa Firebase, ofrece registro/inicio con correo y Google, y sincroniza los datos bajo `users/{uid}` en Firestore. El proyecto `fintrack-personal-cl-20260928`, la base Firestore `southamerica-west1`, las reglas por usuario y los proveedores Email/Password y Google están configurados. La comparación de texto no modifica movimientos automáticamente; los cargos del estado se agregan solo mediante la acción confirmada **Agregar a la app**. La extracción directa de PDF sigue pendiente.
+La aplicación ya inicializa Firebase, ofrece registro/inicio con correo y Google, sincroniza los datos financieros bajo `users/{uid}` en Firestore y tiene un perfil editable por usuario. El proyecto `fintrack-personal-cl-20260928`, la base Firestore `southamerica-west1`, las reglas por usuario y los proveedores Email/Password y Google están configurados. La comparación de texto no modifica movimientos automáticamente; los cargos del estado se agregan solo mediante la acción confirmada **Agregar a la app**. La extracción directa de PDF sigue pendiente.
 
 ## 10. Propuesta visual: Material Design 3 estilo Google
 
