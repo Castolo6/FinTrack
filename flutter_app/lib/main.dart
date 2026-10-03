@@ -221,11 +221,6 @@ class HomePage extends StatelessWidget {
     ];
     final moreDestinations = [
       AppDestination(
-        label: 'Perfil',
-        icon: Icons.person_outline,
-        screen: const ProfileScreen(),
-      ),
-      AppDestination(
         label: 'Objetivos',
         icon: Icons.flag_outlined,
         screen: const GoalsScreen(),
@@ -252,6 +247,11 @@ class HomePage extends StatelessWidget {
       destinations: [...mainDestinations, ...moreDestinations],
       moreDestinations: moreDestinations,
       onSignOut: onSignOut,
+      onOpenProfile: () {
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+      },
       banner: appState.persistenceError == null
           ? null
           : MaterialBanner(

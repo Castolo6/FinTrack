@@ -18,6 +18,7 @@ class ResponsiveScaffold extends StatefulWidget {
   final List<AppDestination>? moreDestinations;
   final FloatingActionButton? floatingActionButton;
   final VoidCallback? onSignOut;
+  final VoidCallback? onOpenProfile;
   final Widget? banner;
 
   const ResponsiveScaffold({
@@ -27,6 +28,7 @@ class ResponsiveScaffold extends StatefulWidget {
     this.moreDestinations,
     this.floatingActionButton,
     this.onSignOut,
+    this.onOpenProfile,
     this.banner,
   });
 
@@ -94,6 +96,12 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
                     onPressed: () =>
                         widget.floatingActionButton!.onPressed?.call(),
                   ),
+                if (widget.onOpenProfile != null && size.width >= 170)
+                  IconButton(
+                    icon: const Icon(Icons.person_outline),
+                    tooltip: 'Perfil',
+                    onPressed: widget.onOpenProfile,
+                  ),
                 if (widget.onSignOut != null && size.width >= 260)
                   IconButton(
                     icon: const Icon(Icons.logout),
@@ -124,15 +132,20 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
                     children: [
                       AppBar(
                         title: Text(widget.title),
-                        actions: widget.onSignOut == null
-                            ? null
-                            : [
-                                IconButton(
-                                  icon: const Icon(Icons.logout),
-                                  tooltip: 'Cerrar sesión',
-                                  onPressed: widget.onSignOut,
-                                ),
-                              ],
+                        actions: [
+                          if (widget.onOpenProfile != null)
+                            IconButton(
+                              icon: const Icon(Icons.person_outline),
+                              tooltip: 'Perfil',
+                              onPressed: widget.onOpenProfile,
+                            ),
+                          if (widget.onSignOut != null)
+                            IconButton(
+                              icon: const Icon(Icons.logout),
+                              tooltip: 'Cerrar sesión',
+                              onPressed: widget.onSignOut,
+                            ),
+                        ],
                       ),
                       if (widget.banner != null) widget.banner!,
                       Expanded(
