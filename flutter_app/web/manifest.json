@@ -1,11 +1,11 @@
 {
-    "name": "flutter_app",
-    "short_name": "flutter_app",
+    "name": "FinTrack",
+    "short_name": "FinTrack",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#202124",
+    "theme_color": "#8AB4F8",
+    "description": "Finanzas personales, presupuestos y objetivos de ahorro en pesos chilenos.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
