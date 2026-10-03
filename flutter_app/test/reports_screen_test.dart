@@ -23,6 +23,17 @@ void main() {
     final now = DateTime.now();
     state.addTransaction(
       Transaction(
+        id: 'expense-current-month',
+        description: 'Compra de supermercado',
+        amount: 45000,
+        type: TransactionType.expense,
+        date: DateTime(now.year, now.month, now.day),
+        accountId: 'banco',
+        categoryId: 'comida',
+      ),
+    );
+    state.addTransaction(
+      Transaction(
         id: 'income-contract',
         description: 'Trabajo independiente',
         amount: 300000,
@@ -52,6 +63,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Servicios'), findsOneWidget);
-    expect(find.textContaining('300.000'), findsOneWidget);
+    expect(find.textContaining('300.000'), findsNWidgets(2));
   });
 }
