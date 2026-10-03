@@ -21,12 +21,20 @@ class AppState extends ChangeNotifier {
 
   final FirestoreRepository? _repository;
   bool _isLoading = false;
+  bool _disposed = false;
   String? _loadError;
   String? _persistenceError;
 
   bool get isLoading => _isLoading;
+  bool get isDisposed => _disposed;
   String? get loadError => _loadError;
   String? get persistenceError => _persistenceError;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   void clearPersistenceError() {
     _persistenceError = null;

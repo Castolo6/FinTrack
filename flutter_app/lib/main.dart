@@ -42,116 +42,120 @@ class FinTrackApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (firebaseStartupError != null) {
+      return _AppScaffold(
+        child: _FirebaseStartupError(error: firebaseStartupError!),
+      );
+    }
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        final waiting = snapshot.connectionState == ConnectionState.waiting;
+        final user = waiting ? null : snapshot.data;
+
+        Widget app = _AppScaffold(
+          child: !waiting
+              ? (user == null
+                    ? const AuthScreen()
+                    : _WorkspaceHome(key: ValueKey(user.uid), user: user))
+              : const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                ),
+        );
+
+        // The provider must live above MaterialApp so every pushed route and
+        // dialog can read AppState.
+        if (user == null) return app;
+        return ChangeNotifierProvider<AppState>(
+          key: ValueKey(user.uid),
+          create: (_) {
+            final state = AppState.forUser(user.uid);
+            // Load after the first frame: notifying listeners while the
+            // provider is being built would throw.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!state.isDisposed) {
+                state.loadFromFirestore();
+              }
+            });
+            return state;
+          },
+          child: app,
+        );
+      },
+    );
+  }
+}
+
+class _AppScaffold extends StatelessWidget {
+  final Widget child;
+
+  const _AppScaffold({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp(
       title: 'FinTrack',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark,
-      home: firebaseStartupError == null
-          ? const AuthGate()
-          : _FirebaseStartupError(error: firebaseStartupError!),
+      home: child,
     );
   }
 }
 
-class AuthGate extends StatelessWidget {
-  const AuthGate({super.key});
+class _WorkspaceHome extends StatelessWidget {
+  final User user;
+
+  const _WorkspaceHome({super.key, required this.user});
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+    return Consumer<AppState>(
+      builder: (context, state, _) {
+        if (state.isLoading) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        final user = snapshot.data;
-        return user == null
-            ? const AuthScreen()
-            : _FirestoreWorkspace(key: ValueKey(user.uid), user: user);
-      },
-    );
-  }
-}
-
-class _FirestoreWorkspace extends StatefulWidget {
-  final User user;
-
-  const _FirestoreWorkspace({super.key, required this.user});
-
-  @override
-  State<_FirestoreWorkspace> createState() => _FirestoreWorkspaceState();
-}
-
-class _FirestoreWorkspaceState extends State<_FirestoreWorkspace> {
-  late final AppState _state;
-
-  @override
-  void initState() {
-    super.initState();
-    _state = AppState.forUser(widget.user.uid);
-    _state.loadFromFirestore();
-  }
-
-  @override
-  void dispose() {
-    _state.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: _state,
-      child: Consumer<AppState>(
-        builder: (context, state, _) {
-          if (state.isLoading) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (state.loadError != null) {
-            return Scaffold(
-              body: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.cloud_off, size: 48),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No se pudieron cargar tus datos',
-                          style: Theme.of(context).textTheme.titleLarge,
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(state.loadError!, textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: state.reloadFromFirestore,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Reintentar'),
-                        ),
-                        TextButton(
-                          onPressed: () => AuthService().signOut(),
-                          child: const Text('Cerrar sesión'),
-                        ),
-                      ],
-                    ),
+        if (state.loadError != null) {
+          return Scaffold(
+            body: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.cloud_off, size: 48),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No se pudieron cargar tus datos',
+                        style: Theme.of(context).textTheme.titleLarge,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(state.loadError!, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: state.reloadFromFirestore,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Reintentar'),
+                      ),
+                      TextButton(
+                        onPressed: () => AuthService().signOut(),
+                        child: const Text('Cerrar sesión'),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            );
-          }
-          return HomePage(onSignOut: () => AuthService().signOut());
-        },
-      ),
+            ),
+          );
+        }
+        return HomePage(onSignOut: () => AuthService().signOut());
+      },
     );
   }
 }
