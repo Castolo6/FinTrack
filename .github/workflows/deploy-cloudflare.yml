@@ -1,0 +1,71 @@
+name: Deploy a FinTrack en Cloudflare Pages
+
+on:
+  push:
+    branches:
+      - feature-light-version
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-cloudflare-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+    working-directory: flutter_app
+
+jobs:
+  deploy:
+    name: Compilar y desplegar
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verificar secretos de Cloudflare
+        run: |
+          fallo=0
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Falta el secreto CLOUDFLARE_API_TOKEN (GitHub > Settings > Secrets and variables > Actions)."
+            fallo=1
+          fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Falta el secreto CLOUDFLARE_ACCOUNT_ID (GitHub > Settings > Secrets and variables > Actions)."
+            fallo=1
+          fi
+          exit $fallo
+
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.2
+          channel: stable
+          cache: true
+
+      - name: Dependencias
+        run: flutter pub get
+
+      - name: Analisis estatico
+        run: flutter analyze
+
+      - name: Pruebas
+        run: flutter test
+
+      - name: Compilar web
+        run: flutter build web --release
+
+      - name: Desplegar en Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4"
+          command: >-
+            pages deploy flutter_app/build/web
+            --project-name fintrack
+            --branch ${{ github.ref_name }}
