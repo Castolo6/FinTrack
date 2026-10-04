@@ -1,106 +1,61 @@
-# Despliegue automático en Cloudflare Pages
+# Despliegue automático en Cloudflare Workers
 
-Cada `push` a `feature-light-version` compila la app Flutter y la publica en
-Cloudflare Pages sin subir archivos a mano. Todo el proyecto se crea **una sola
-vez**; después nunca más hay que tocar el panel.
+Cada `push` a `feature-light-version` compila Flutter Web y actualiza el Worker
+estático existente `fintrack`, que atiende `fintrack.castolo.dev`. No se crea ni
+se elimina el Worker en cada despliegue.
 
 ```
-git push  →  GitHub Actions (Flutter analyze + test + build)  →  wrangler pages deploy  →  fintrack.castolo.dev
+git push → GitHub Actions (analyze + test + build) → wrangler deploy → fintrack.castolo.dev
 ```
 
-Workflow: `.github/workflows/deploy-cloudflare.yml`.
+Workflow: `.github/workflows/deploy-cloudflare.yml`  
+Configuración de Wrangler: `wrangler.jsonc` (estáticos en `flutter_app/build/web`).
 
----
+## Configuración única
 
-## Paso 1 — Crear el proyecto Pages (una sola vez)
+1. Conserva el Worker existente llamado `fintrack` y el dominio personalizado.
+   No conectes el proyecto a Pages ni crees otro recurso.
+2. En GitHub, `Castolo6/FinTrack` → **Settings → Secrets and variables → Actions**,
+   crea estos *repository secrets*:
 
-Opción A, desde el panel:
+   | Nombre | Valor |
+   | --- | --- |
+   | `CLOUDFLARE_API_TOKEN` | Token de Cloudflare con permiso **Account → Workers Scripts → Edit/Write**, limitado a la cuenta que contiene `fintrack`. |
+   | `CLOUDFLARE_ACCOUNT_ID` | Account ID de esa misma cuenta. |
 
-1. **Workers & Pages → Create application → Pages → Upload assets**
-2. Nombre del proyecto: `fintrack` (debe coincidir exactamente con el del panel de Cloudflare).
-3. **Production branch:** `feature-light-version` (en Settings → Builds & deployments)
-4. Sube una vez el contenido de `flutter_app/build/web` para que exista el primer deploy.
+   ⚠️ No uses `Pages Write` para este Worker. No pegues el token en el chat ni
+   lo agregues al repositorio. Si ya creaste un token con `Pages Write`, crea
+   uno nuevo con `Workers Scripts: Edit/Write` y reemplaza el secreto de GitHub.
 
-Opción B, desde la terminal (misma configuración):
+3. En Firebase Authentication → Settings → Authorized domains, confirma que
+   esté `fintrack.castolo.dev`.
 
-```bash
-npx wrangler pages project create fintrack --production-branch feature-light-version
-npx wrangler pages deploy flutter_app/build/web --project-name fintrack --branch feature-light-version
-```
+## Despliegue
 
-> **Importante:** la rama de producción del proyecto debe ser
-> `feature-light-version`, o los despliegues quedarían como *preview* y el
-> dominio personalizado no se actualizaría.
+Después de guardar los secretos y publicar el workflow, cada push a la rama
+`feature-light-version` ejecuta `flutter analyze`, `flutter test`,
+`flutter build web --release` y `wrangler deploy --config wrangler.jsonc`.
+Si alguna prueba falla, no se despliega. El resultado se ve en GitHub → Actions.
 
-## Paso 2 — Dominio personalizado (una sola vez)
+También se puede iniciar a mano desde **Actions → Deploy FinTrack en Cloudflare Workers → Run workflow**.
 
-1. En el proyecto Pages → **Custom domains → Set up a custom domain** → `fintrack.castolo.dev`.
-2. Si el dominio hoy está en un Worker, elimínalo de ese Worker antes de asignarlo:
-   Cloudflare → DNS → registro `fintrack` → debe quedar **proxied (nube naranja)**
-   y el CNAME apuntando al proyecto Pages.
+## Errores comunes
 
-## Paso 3 — Secretos en GitHub (una sola vez)
-
-1. Cloudflare → avatar → **My Profile → API Tokens → Create Token**.
-2. Permisos: **Account → Cloudflare Pages → Edit** (o plantilla *Edit Cloudflare Workers*),
-   alcance: tu cuenta. Copia el token **una sola vez**.
-3. En GitHub: `Castolo6/FinTrack` → **Settings → Secrets and variables → Actions → New repository secret**:
-
-| Nombre | Valor |
+| Error | Causa / solución |
 | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | el token del paso 1 |
-| `CLOUDFLARE_ACCOUNT_ID` | Workers & Pages → barra lateral derecha (o de la URL del dashboard) |
+| `script not found` o `Authentication failed` | El token está mal, pertenece a otra cuenta o no tiene `Workers Scripts: Edit/Write`. Actualiza `CLOUDFLARE_API_TOKEN`. |
+| `workers_dev` o Worker no encontrado | Revisa que `CLOUDFLARE_ACCOUNT_ID` sea la cuenta correcta y que `wrangler.jsonc` diga `"name": "fintrack"`. |
+| `Pages project does not exist` | Se está usando `wrangler pages deploy`; el recurso actual es un Worker. El workflow debe ejecutar `wrangler deploy`. |
+| `fintrack.castolo.dev` no actualiza | Confirma en Cloudflare que el dominio personalizado siga asociado al Worker `fintrack`; revisa caché con Ctrl+F5. |
 
-⚠️ No los pegues en el chat, en issues ni en el repositorio. Solo existen como
-secretos de GitHub; el workflow los inyecta en tiempo de ejecución.
+## Despliegue manual de respaldo
 
-## Paso 4 — Dominios autorizados en Firebase (una sola vez)
-
-**Firebase Console → Authentication → Settings → Authorized domains → Add domain:**
-
-- `fintrack.pages.dev`
-- `fintrack.castolo.dev`
-
-Sin esto, el registro e inicio de sesión fallan desde la app publicada.
-
----
-
-## Cómo se despliega
-
-```bash
-git add flutter_app
-git commit -m "feat(...): ..."
-git push origin feature-light-version
-```
-
-GitHub Actions ejecuta: `flutter pub get` → `flutter analyze` → `flutter test`
-→ `flutter build web --release` → `wrangler pages deploy`.
-En 2–4 minutos la web nueva está en línea (refresca con `Ctrl+F5`).
-
-El flujo también se puede lanzar a mano desde la pestaña **Actions** del
-repositorio con el botón **Run workflow**.
-
-## Solución de problemas
-
-| Error | Causa y solución |
-| --- | --- |
-| `Falta el secreto CLOUDFLARE_API_TOKEN` | No se crearon los secretos del paso 3 (o están mal escritos). |
-| `Authentication failed` / `10000` | Token inválido o sin permiso *Cloudflare Pages: Edit*. Crea uno nuevo. |
-| `project not found` | El proyecto `fintrack` no existe (paso 1) o el account id es de otra cuenta. |
-| Deploy sale como *preview* | La rama de producción del proyecto no es `feature-light-version` (Settings → Builds & deployments). |
-| `The specified domain is already assigned` | El dominio sigue en otro proyecto/Worker; libéralo antes de asignarlo (paso 2). |
-| GitHub rechaza ejecutar el workflow | La rama o Actions están restringidas (Settings → Actions → General → Allowed actions). |
-
-## Despliegue puntual desde tu equipo (sin GitHub)
-
-Si un día necesitas publicar a mano:
+Desde la raíz del repositorio, con un token `Workers Scripts: Edit/Write`
+configurado localmente:
 
 ```bash
 cd flutter_app
 flutter build web --release
-npx wrangler pages deploy build/web --project-name fintrack --branch feature-light-version
+cd ..
+npx wrangler deploy --config wrangler.jsonc
 ```
-
-No borres ni recreas el proyecto: `pages deploy` agrega un despliegue nuevo al
-proyecto existente y el anterior queda disponible para volver atrás
-(Pages → Deployments → Rollback).

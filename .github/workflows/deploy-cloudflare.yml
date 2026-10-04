@@ -1,4 +1,4 @@
-name: Deploy a FinTrack en Cloudflare Pages
+name: Deploy FinTrack en Cloudflare Workers
 
 on:
   push:
@@ -59,13 +59,10 @@ jobs:
       - name: Compilar web
         run: flutter build web --release
 
-      - name: Desplegar en Cloudflare Pages
+      - name: Desplegar Worker estático existente
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4"
-          command: >-
-            pages deploy flutter_app/build/web
-            --project-name fintrack
-            --branch ${{ github.ref_name }}
+          command: deploy --config wrangler.jsonc
