@@ -102,4 +102,50 @@ void main() {
 
     expect(find.byIcon(Icons.person_outline), findsNothing);
   });
+
+  testWidgets('standalone destinations from Más get their own Scaffold', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ResponsiveScaffold(
+          title: 'FinTrack',
+          destinations: destinations(),
+          moreDestinations: [
+            AppDestination(
+              label: 'Objetivos',
+              icon: Icons.flag_outlined,
+              screen: const Text('Objetivos screen'),
+              standalone: true,
+            ),
+            AppDestination(
+              label: 'Categorías',
+              icon: Icons.label_outline,
+              screen: const Text('Categorías screen'),
+            ),
+          ],
+          onSignOut: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Más'));
+    await tester.pumpAndSettle();
+    expect(find.text('Objetivos'), findsOneWidget);
+
+    await tester.tap(find.text('Objetivos'));
+    await tester.pumpAndSettle();
+
+    // A body-only screen must be wrapped so it is not blank when pushed.
+    expect(find.text('Objetivos screen'), findsOneWidget);
+    expect(find.byType(AppBar), findsWidgets);
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

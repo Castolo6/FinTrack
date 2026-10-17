@@ -228,6 +228,7 @@ class HomePage extends StatelessWidget {
         label: 'Objetivos',
         icon: Icons.flag_outlined,
         screen: const GoalsScreen(),
+        standalone: true,
       ),
       AppDestination(
         label: 'Categorías',
@@ -238,11 +239,13 @@ class HomePage extends StatelessWidget {
         label: 'Comparar',
         icon: Icons.compare_arrows,
         screen: const StatementReconciliationScreen(),
+        standalone: true,
       ),
       AppDestination(
         label: 'Reportes',
         icon: Icons.insert_chart_outlined,
         screen: const ReportsScreen(),
+        standalone: true,
       ),
     ];
 

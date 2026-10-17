@@ -5,10 +5,15 @@ class AppDestination {
   final IconData icon;
   final Widget screen;
 
+  /// True when [screen] has no [Scaffold] and must be wrapped when it is
+  /// pushed as a standalone route (e.g. from the "Más" submenu).
+  final bool standalone;
+
   AppDestination({
     required this.label,
     required this.icon,
     required this.screen,
+    this.standalone = false,
   });
 }
 
@@ -250,9 +255,16 @@ class _MoreMenu extends StatelessWidget {
                       title: Text(d.label),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () {
-                        Navigator.of(
-                          context,
-                        ).push(MaterialPageRoute(builder: (_) => d.screen));
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => d.standalone
+                                ? Scaffold(
+                                    appBar: AppBar(title: Text(d.label)),
+                                    body: d.screen,
+                                  )
+                                : d.screen,
+                          ),
+                        );
                       },
                     ),
                     if (!isLast) const Divider(height: 1),

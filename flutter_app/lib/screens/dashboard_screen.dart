@@ -10,7 +10,6 @@ import '../widgets/transaction_tile.dart';
 import 'budget_detail_screen.dart';
 import 'budgets_screen.dart';
 import 'transaction_list_screen.dart';
-import 'transactions_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -123,9 +122,15 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ),
                 TextButton(
+                  key: const ValueKey('dashboard-all-budgets'),
                   onPressed: () {
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const BudgetsScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => Scaffold(
+                          appBar: AppBar(title: const Text('Presupuestos')),
+                          body: const BudgetsScreen(),
+                        ),
+                      ),
                     );
                   },
                   child: const Text('Ver todo'),
@@ -164,10 +169,12 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ),
                 TextButton(
+                  key: const ValueKey('dashboard-all-transactions'),
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => const TransactionsScreen(),
+                        builder: (_) =>
+                            const TransactionListScreen(title: 'Movimientos'),
                       ),
                     );
                   },
