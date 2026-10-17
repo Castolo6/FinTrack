@@ -58,6 +58,37 @@ class _ReportsScreenState extends State<ReportsScreen>
     return !day.isBefore(_range.start) && !day.isAfter(_range.end);
   }
 
+  DateTimeRange _comparisonRange() {
+    final startsAtMonthBeginning =
+        _range.start.day == 1 &&
+        _range.start.year == _range.end.year &&
+        _range.start.month == _range.end.month;
+    if (startsAtMonthBeginning) {
+      final previousStart = DateTime(_range.start.year, _range.start.month - 1);
+      final lastPreviousDay = DateTime(
+        previousStart.year,
+        previousStart.month + 1,
+        0,
+      ).day;
+      final previousEnd = DateTime(
+        previousStart.year,
+        previousStart.month,
+        _range.end.day.clamp(1, lastPreviousDay),
+      );
+      return DateTimeRange(start: previousStart, end: previousEnd);
+    }
+
+    final duration = _range.end.difference(_range.start).inDays + 1;
+    final previousEnd = _range.start.subtract(const Duration(days: 1));
+    final previousStart = previousEnd.subtract(Duration(days: duration - 1));
+    return DateTimeRange(start: previousStart, end: previousEnd);
+  }
+
+  int _sumTransactions(List<Transaction> transactions, TransactionType type) =>
+      transactions
+          .where((transaction) => transaction.type == type)
+          .fold<int>(0, (sum, transaction) => sum + transaction.amount);
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
@@ -66,12 +97,24 @@ class _ReportsScreenState extends State<ReportsScreen>
     final transactions = state.transactions
         .where((transaction) => _inRange(transaction.date))
         .toList();
-    final income = transactions
-        .where((transaction) => transaction.type == TransactionType.income)
-        .fold<int>(0, (sum, transaction) => sum + transaction.amount);
-    final expenses = transactions
-        .where((transaction) => transaction.type == TransactionType.expense)
-        .fold<int>(0, (sum, transaction) => sum + transaction.amount);
+    final income = _sumTransactions(transactions, TransactionType.income);
+    final expenses = _sumTransactions(transactions, TransactionType.expense);
+    final previousRange = _comparisonRange();
+    final previousTransactions = state.transactions.where((transaction) {
+      final day = DateUtils.dateOnly(transaction.date);
+      return !day.isBefore(previousRange.start) &&
+          !day.isAfter(previousRange.end);
+    }).toList();
+    final previousIncome = _sumTransactions(
+      previousTransactions,
+      TransactionType.income,
+    );
+    final previousExpenses = _sumTransactions(
+      previousTransactions,
+      TransactionType.expense,
+    );
+    final currentNetWorth = state.netWorthAt(_range.end);
+    final previousNetWorth = state.netWorthAt(previousRange.end);
     final expensesByCategory = <String, int>{};
     for (final transaction in transactions.where(
       (transaction) => transaction.type == TransactionType.expense,
@@ -153,6 +196,17 @@ class _ReportsScreenState extends State<ReportsScreen>
             categoryName: sortedCategories.isEmpty
                 ? null
                 : _categoryName(state, sortedCategories.first.key),
+          ),
+          const SizedBox(height: 12),
+          _ComparisonCard(
+            currentRange: _range,
+            previousRange: previousRange,
+            currentIncome: income,
+            previousIncome: previousIncome,
+            currentExpenses: expenses,
+            previousExpenses: previousExpenses,
+            currentNetWorth: currentNetWorth,
+            previousNetWorth: previousNetWorth,
           ),
           const SizedBox(height: 12),
           _InsightsCard(insights: insights),
@@ -431,6 +485,167 @@ class _PeriodBucket {
     income: income ?? this.income,
     expenses: expenses ?? this.expenses,
   );
+}
+
+class _ComparisonCard extends StatelessWidget {
+  final DateTimeRange currentRange;
+  final DateTimeRange previousRange;
+  final int currentIncome;
+  final int previousIncome;
+  final int currentExpenses;
+  final int previousExpenses;
+  final int currentNetWorth;
+  final int previousNetWorth;
+
+  const _ComparisonCard({
+    required this.currentRange,
+    required this.previousRange,
+    required this.currentIncome,
+    required this.previousIncome,
+    required this.currentExpenses,
+    required this.previousExpenses,
+    required this.currentNetWorth,
+    required this.previousNetWorth,
+  });
+
+  String _rangeLabel(DateTimeRange range) =>
+      '${Formatters.date(range.start)} – ${Formatters.date(range.end)}';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isMonthComparison =
+        currentRange.start.day == 1 &&
+        currentRange.start.year == currentRange.end.year &&
+        currentRange.start.month == currentRange.end.month;
+    final subtitle = isMonthComparison
+        ? '${Formatters.monthYear(currentRange.start)} vs ${Formatters.monthYear(previousRange.start)}'
+        : 'Periodo actual vs periodo anterior';
+
+    return Card(
+      key: const ValueKey('report-period-comparison'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Comparación mensual',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              isMonthComparison
+                  ? subtitle
+                  : '$subtitle: ${_rangeLabel(currentRange)} · ${_rangeLabel(previousRange)}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _ComparisonMetric(
+              title: 'Ingresos',
+              icon: Icons.south_west,
+              current: currentIncome,
+              previous: previousIncome,
+              preferIncrease: true,
+            ),
+            const Divider(height: 20),
+            _ComparisonMetric(
+              title: 'Gastos',
+              icon: Icons.north_east,
+              current: currentExpenses,
+              previous: previousExpenses,
+              preferIncrease: false,
+            ),
+            const Divider(height: 20),
+            _ComparisonMetric(
+              title: 'Patrimonio',
+              icon: Icons.account_balance_wallet_outlined,
+              current: currentNetWorth,
+              previous: previousNetWorth,
+              preferIncrease: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ComparisonMetric extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final int current;
+  final int previous;
+  final bool preferIncrease;
+
+  const _ComparisonMetric({
+    required this.title,
+    required this.icon,
+    required this.current,
+    required this.previous,
+    required this.preferIncrease,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final difference = current - previous;
+    final isFavorable =
+        difference == 0 || (preferIncrease ? difference > 0 : difference < 0);
+    final color = difference == 0
+        ? scheme.onSurfaceVariant
+        : isFavorable
+        ? scheme.tertiary
+        : scheme.error;
+    final change = difference == 0
+        ? 'Sin variación'
+        : '${difference > 0 ? '+' : '−'}${Formatters.currency(difference.abs())}'
+              '${previous == 0 ? '' : ' (${(difference.abs() * 100 / previous.abs()).round()}%)'}';
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: scheme.primary, size: 22),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                key: ValueKey('report-comparison-${title.toLowerCase()}'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                'Actual ${Formatters.currency(current)} · Anterior ${Formatters.currency(previous)}',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 112),
+          child: Text(
+            change,
+            textAlign: TextAlign.end,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _HealthSummary extends StatelessWidget {

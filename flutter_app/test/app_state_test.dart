@@ -158,5 +158,50 @@ void main() {
       );
       expect(state.deleteAccount('new'), isTrue);
     });
+
+    test('historical balances and net worth ignore future transactions', () {
+      state.addAccount(
+        Account(
+          id: 'historical-account',
+          name: 'Cuenta histórica',
+          type: AccountType.bank,
+          openingBalance: 100000,
+        ),
+      );
+      final beforeTransactions = DateTime(2026, 10, 10);
+      final beforeIncome = DateTime(2026, 10, 11);
+      final afterIncome = DateTime(2026, 10, 12);
+      final netWorthBeforeIncome = state.netWorthAt(beforeTransactions);
+
+      state.addTransaction(
+        Transaction(
+          id: 'historical-income',
+          description: 'Ingreso histórico',
+          amount: 50000,
+          type: TransactionType.income,
+          date: beforeIncome,
+          accountId: 'historical-account',
+        ),
+      );
+      state.addTransaction(
+        Transaction(
+          id: 'historical-expense',
+          description: 'Gasto histórico',
+          amount: 10000,
+          type: TransactionType.expense,
+          date: afterIncome,
+          accountId: 'historical-account',
+        ),
+      );
+
+      expect(
+        state.balanceForAt('historical-account', beforeTransactions),
+        100000,
+      );
+      expect(state.balanceForAt('historical-account', beforeIncome), 150000);
+      expect(state.balanceForAt('historical-account', afterIncome), 140000);
+      expect(state.netWorthAt(beforeTransactions), netWorthBeforeIncome);
+      expect(state.netWorthAt(beforeIncome), netWorthBeforeIncome + 50000);
+    });
   });
 }

@@ -283,12 +283,25 @@ class AppState extends ChangeNotifier {
 
   /// Asset balances are positive. Liability balances are the amount owed,
   /// also positive. Card payments reduce the liability and bank balance.
-  int balanceFor(String accountId) {
+  int balanceFor(String accountId) => _balanceFor(accountId);
+
+  /// Calculates an account balance using only transactions through the given
+  /// calendar day. Used for historical reports and month-over-month comparisons.
+  int balanceForAt(String accountId, DateTime asOf) =>
+      _balanceFor(accountId, asOf: asOf);
+
+  int _balanceFor(String accountId, {DateTime? asOf}) {
     final account = accountById(accountId);
     if (account == null) return 0;
 
     var balance = account.openingBalance;
     for (final transaction in _transactions) {
+      if (asOf != null &&
+          DateUtils.dateOnly(
+            transaction.date,
+          ).isAfter(DateUtils.dateOnly(asOf))) {
+        continue;
+      }
       switch (transaction.type) {
         case TransactionType.income:
           if (transaction.accountId == accountId) {
@@ -337,6 +350,16 @@ class AppState extends ChangeNotifier {
       .fold<int>(0, (sum, a) => sum + balanceFor(a.id));
 
   int get netWorth => totalAssets - totalLiabilities;
+
+  int netWorthAt(DateTime asOf) {
+    final assets = _accounts
+        .where((account) => account.isAsset)
+        .fold<int>(0, (sum, account) => sum + balanceForAt(account.id, asOf));
+    final liabilities = _accounts
+        .where((account) => account.isLiability)
+        .fold<int>(0, (sum, account) => sum + balanceForAt(account.id, asOf));
+    return assets - liabilities;
+  }
 
   int monthlyExpenses({DateTime? month}) {
     final period = month ?? DateTime.now();
