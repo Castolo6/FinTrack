@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 class AppDestination {
   final String label;
+  final String? mobileLabel;
   final IconData icon;
   final Widget screen;
 
@@ -13,6 +14,7 @@ class AppDestination {
     required this.label,
     required this.icon,
     required this.screen,
+    this.mobileLabel,
     this.standalone = false,
   });
 }
@@ -183,7 +185,7 @@ class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
                     (d) => NavigationDestination(
                       icon: Icon(d.icon),
                       selectedIcon: Icon(d.icon),
-                      label: d.label,
+                      label: d.mobileLabel ?? d.label,
                       tooltip: d.label,
                     ),
                   )

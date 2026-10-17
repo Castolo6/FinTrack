@@ -214,11 +214,13 @@ class HomePage extends StatelessWidget {
       ),
       AppDestination(
         label: 'Movimientos',
+        mobileLabel: 'Movim.',
         icon: Icons.receipt_long_outlined,
         screen: const TransactionsScreen(),
       ),
       AppDestination(
         label: 'Presupuestos',
+        mobileLabel: 'Presup.',
         icon: Icons.pie_chart_outline,
         screen: const BudgetsScreen(),
       ),

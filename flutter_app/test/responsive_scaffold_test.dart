@@ -16,11 +16,13 @@ void main() {
     ),
     AppDestination(
       label: 'Movimientos',
+      mobileLabel: 'Movim.',
       icon: Icons.receipt_long_outlined,
       screen: const Text('Movimientos screen'),
     ),
     AppDestination(
       label: 'Presupuestos',
+      mobileLabel: 'Presup.',
       icon: Icons.pie_chart_outline,
       screen: const Text('Presupuestos screen'),
     ),
@@ -101,6 +103,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.person_outline), findsNothing);
+  });
+
+  testWidgets('long mobile navigation labels use compact text only below', (
+    tester,
+  ) async {
+    await pumpHome(tester, width: 400, onOpenProfile: () {});
+
+    await tester.tap(find.byTooltip('Presupuestos'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Presup.'), findsOneWidget);
+    expect(find.text('Presupuestos'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('standalone destinations from Más get their own Scaffold', (
