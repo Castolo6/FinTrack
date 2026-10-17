@@ -5,6 +5,7 @@ import '../models/app_models.dart';
 import '../providers/app_state.dart';
 import '../services/formatters.dart';
 import 'account_detail_screen.dart';
+import 'transaction_list_screen.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -14,13 +15,15 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late DateTimeRange _range;
+  late TabController _reportTabController;
   late TabController _categoryTabController;
 
   @override
   void initState() {
     super.initState();
+    _reportTabController = TabController(length: 4, vsync: this);
     _categoryTabController = TabController(length: 2, vsync: this);
     final now = DateTime.now();
     _range = DateTimeRange(
@@ -31,6 +34,7 @@ class _ReportsScreenState extends State<ReportsScreen>
 
   @override
   void dispose() {
+    _reportTabController.dispose();
     _categoryTabController.dispose();
     super.dispose();
   }
@@ -141,10 +145,6 @@ class _ReportsScreenState extends State<ReportsScreen>
     }
     final sortedIncomeCategories = incomeByCategory.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-    final showingIncomeCategories = _categoryTabController.index == 1;
-    final displayedCategories = showingIncomeCategories
-        ? sortedIncomeCategories
-        : sortedCategories;
     final timeline = _buildTimeline(transactions);
     final insights = _buildInsights(
       state,
@@ -153,26 +153,33 @@ class _ReportsScreenState extends State<ReportsScreen>
       categories: sortedCategories,
     );
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Reportes',
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Reportes',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                'Tu panorama financiero en el periodo seleccionado',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Tu panorama financiero en el periodo seleccionado',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 16),
-          InkWell(
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: InkWell(
+            key: const ValueKey('report-date-range'),
             onTap: _pickRange,
             borderRadius: BorderRadius.circular(12),
             child: InputDecorator(
@@ -185,7 +192,66 @@ class _ReportsScreenState extends State<ReportsScreen>
               ),
             ),
           ),
-          const SizedBox(height: 16),
+        ),
+        TabBar(
+          key: const ValueKey('report-main-tabs'),
+          controller: _reportTabController,
+          tabs: const [
+            Tab(key: ValueKey('report-overview-tab'), text: 'Resumen'),
+            Tab(key: ValueKey('report-flow-tab'), text: 'Flujo'),
+            Tab(key: ValueKey('report-categories-tab'), text: 'Categorías'),
+            Tab(key: ValueKey('report-assets-tab'), text: 'Patrimonio'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _reportTabController,
+            children: [
+              _buildSummaryTab(
+                state: state,
+                income: income,
+                expenses: expenses,
+                sortedCategories: sortedCategories,
+                insights: insights,
+                previousRange: previousRange,
+                previousIncome: previousIncome,
+                previousExpenses: previousExpenses,
+                currentNetWorth: currentNetWorth,
+                previousNetWorth: previousNetWorth,
+              ),
+              _buildFlowTab(timeline),
+              _buildCategoriesTab(
+                state: state,
+                expenses: expenses,
+                income: income,
+                sortedCategories: sortedCategories,
+                sortedIncomeCategories: sortedIncomeCategories,
+              ),
+              _buildAssetsTab(state),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryTab({
+    required AppState state,
+    required int income,
+    required int expenses,
+    required List<MapEntry<String, int>> sortedCategories,
+    required List<_Insight> insights,
+    required DateTimeRange previousRange,
+    required int previousIncome,
+    required int previousExpenses,
+    required int currentNetWorth,
+    required int previousNetWorth,
+  }) {
+    return SingleChildScrollView(
+      key: const ValueKey('report-summary-content'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        children: [
           _HealthSummary(
             income: income,
             expenses: expenses,
@@ -210,100 +276,183 @@ class _ReportsScreenState extends State<ReportsScreen>
           ),
           const SizedBox(height: 12),
           _InsightsCard(insights: insights),
-          const SizedBox(height: 24),
-          _SectionHeading(title: 'Ingresos y gastos por fecha'),
-          const SizedBox(height: 8),
-          _TimelineChart(buckets: timeline),
-          const SizedBox(height: 24),
-          _SectionHeading(title: 'Distribución por categoría'),
-          const SizedBox(height: 4),
-          TabBar(
-            controller: _categoryTabController,
-            onTap: (_) => setState(() {}),
-            tabs: const [
-              Tab(key: ValueKey('report-expense-tab'), text: 'Gastos'),
-              Tab(key: ValueKey('report-income-tab'), text: 'Ingresos'),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (displayedCategories.isEmpty)
-            _EmptyCard(
-              message: showingIncomeCategories
-                  ? 'No hay ingresos categorizados en este rango.'
-                  : 'No hay gastos categorizados en este rango.',
-            )
-          else ...[
-            _CategoryChart(
-              entries: displayedCategories,
-              categoryName: (id) => _categoryName(state, id),
-              categoryColor: (id) => _categoryColor(state, id, colorScheme),
-            ),
-            const SizedBox(height: 8),
-            ...displayedCategories.map((entry) {
-              final category = state.categoryById(entry.key);
-              final displayedTotal = showingIncomeCategories
-                  ? income
-                  : expenses;
-              final share = displayedTotal > 0
-                  ? entry.value / displayedTotal
-                  : 0.0;
-              return Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: _categoryColor(
-                      state,
-                      entry.key,
-                      colorScheme,
-                    ).withValues(alpha: 0.16),
-                    child: Icon(
-                      category?.icon ?? Icons.category_outlined,
-                      color: _categoryColor(state, entry.key, colorScheme),
-                    ),
-                  ),
-                  title: Text(_categoryName(state, entry.key)),
-                  subtitle: Text(
-                    '${(share * 100).toStringAsFixed(0)}% de tus ${showingIncomeCategories ? 'ingresos' : 'gastos'}',
-                  ),
-                  trailing: Text(
-                    Formatters.currency(entry.value),
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ],
-          const SizedBox(height: 24),
-          _SectionHeading(title: 'Activos, tarjetas y créditos'),
-          const SizedBox(height: 8),
-          _BalanceCard(state: state),
-          const SizedBox(height: 24),
-          _SectionHeading(title: 'Cuentas de activo'),
-          const SizedBox(height: 8),
-          ...state.accounts
-              .where((account) => account.isAsset)
-              .map(
-                (account) => _AccountReportTile(account: account, state: state),
-              ),
-          const SizedBox(height: 16),
-          _SectionHeading(title: 'Tarjetas y créditos'),
-          const SizedBox(height: 8),
-          ...state.accounts
-              .where((account) => account.isLiability)
-              .map(
-                (account) => _AccountReportTile(account: account, state: state),
-              ),
-          const SizedBox(height: 12),
-          const _InfoNote(
-            text:
-                'Las transferencias y pagos de deuda no se cuentan como egresos. Se cuentan los gastos originales para evitar duplicarlos.',
-          ),
         ],
       ),
     );
   }
+
+  Widget _buildFlowTab(List<_PeriodBucket> timeline) => SingleChildScrollView(
+    key: const ValueKey('report-flow-content'),
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeading(title: 'Ingresos y gastos por fecha'),
+        const SizedBox(height: 8),
+        _TimelineChart(buckets: timeline),
+      ],
+    ),
+  );
+
+  Widget _buildCategoriesTab({
+    required AppState state,
+    required int expenses,
+    required int income,
+    required List<MapEntry<String, int>> sortedCategories,
+    required List<MapEntry<String, int>> sortedIncomeCategories,
+  }) {
+    final showingIncome = _categoryTabController.index == 1;
+    return Column(
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: _SectionHeading(title: 'Distribución por categoría'),
+          ),
+        ),
+        TabBar(
+          controller: _categoryTabController,
+          onTap: (_) => setState(() {}),
+          tabs: const [
+            Tab(key: ValueKey('report-expense-tab'), text: 'Gastos'),
+            Tab(key: ValueKey('report-income-tab'), text: 'Ingresos'),
+          ],
+        ),
+        Expanded(
+          child: _buildCategoryList(
+            state: state,
+            entries: showingIncome ? sortedIncomeCategories : sortedCategories,
+            total: showingIncome ? income : expenses,
+            isIncome: showingIncome,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCategoryList({
+    required AppState state,
+    required List<MapEntry<String, int>> entries,
+    required int total,
+    required bool isIncome,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    if (entries.isEmpty) {
+      return _EmptyCard(
+        message: isIncome
+            ? 'No hay ingresos categorizados en este rango.'
+            : 'No hay gastos categorizados en este rango.',
+      );
+    }
+
+    return SingleChildScrollView(
+      key: ValueKey(
+        isIncome ? 'report-income-content' : 'report-expense-content',
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      child: Column(
+        children: [
+          _CategoryChart(
+            entries: entries,
+            categoryName: (id) => _categoryName(state, id),
+            categoryColor: (id) => _categoryColor(state, id, colorScheme),
+          ),
+          const SizedBox(height: 8),
+          ...entries.map((entry) {
+            final category = state.categoryById(entry.key);
+            final share = total > 0 ? entry.value / total : 0.0;
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                key: ValueKey(
+                  'report-category-${isIncome ? 'income' : 'expense'}-${entry.key}',
+                ),
+                leading: CircleAvatar(
+                  backgroundColor: _categoryColor(
+                    state,
+                    entry.key,
+                    colorScheme,
+                  ).withValues(alpha: 0.16),
+                  child: Icon(
+                    category?.icon ?? Icons.category_outlined,
+                    color: _categoryColor(state, entry.key, colorScheme),
+                  ),
+                ),
+                title: Text(_categoryName(state, entry.key)),
+                subtitle: Text(
+                  '${(share * 100).toStringAsFixed(0)}% de tus ${isIncome ? 'ingresos' : 'gastos'}',
+                ),
+                trailing: Text(
+                  Formatters.currency(entry.value),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                onTap: () {
+                  final selectedRange = _range;
+                  final transactionType = isIncome
+                      ? TransactionType.income
+                      : TransactionType.expense;
+                  final label = isIncome ? 'Ingresos' : 'Gastos';
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => TransactionListScreen(
+                        title: '${_categoryName(state, entry.key)} · $label',
+                        subtitle:
+                            '${Formatters.date(selectedRange.start)} – ${Formatters.date(selectedRange.end)}',
+                        filter: (transaction) {
+                          final day = DateUtils.dateOnly(transaction.date);
+                          return transaction.categoryId == entry.key &&
+                              transaction.type == transactionType &&
+                              !day.isBefore(selectedRange.start) &&
+                              !day.isAfter(selectedRange.end);
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAssetsTab(AppState state) => SingleChildScrollView(
+    key: const ValueKey('report-assets-content'),
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeading(title: 'Activos, tarjetas y créditos'),
+        const SizedBox(height: 8),
+        _BalanceCard(state: state),
+        const SizedBox(height: 24),
+        const _SectionHeading(title: 'Cuentas de activo'),
+        const SizedBox(height: 8),
+        ...state.accounts
+            .where((account) => account.isAsset)
+            .map(
+              (account) => _AccountReportTile(account: account, state: state),
+            ),
+        const SizedBox(height: 16),
+        const _SectionHeading(title: 'Tarjetas y créditos'),
+        const SizedBox(height: 8),
+        ...state.accounts
+            .where((account) => account.isLiability)
+            .map(
+              (account) => _AccountReportTile(account: account, state: state),
+            ),
+        const SizedBox(height: 12),
+        const _InfoNote(
+          text:
+              'Las transferencias y pagos de deuda no se cuentan como egresos. Se cuentan los gastos originales para evitar duplicarlos.',
+        ),
+      ],
+    ),
+  );
 
   String _categoryName(AppState state, String id) => id == 'uncategorized'
       ? 'Sin categoría'
@@ -1101,19 +1250,28 @@ class _BalanceLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
-      Text(
-        label,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          fontWeight: bold ? FontWeight.w700 : null,
+      Expanded(
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            fontWeight: bold ? FontWeight.w700 : null,
+          ),
         ),
       ),
-      Text(
-        Formatters.currency(amount),
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w700,
+      const SizedBox(width: 12),
+      Flexible(
+        child: Text(
+          Formatters.currency(amount),
+          textAlign: TextAlign.end,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     ],

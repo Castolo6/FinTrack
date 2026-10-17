@@ -6,6 +6,7 @@ import 'package:flutter_app/models/app_models.dart';
 import 'package:flutter_app/providers/app_state.dart';
 import 'package:flutter_app/services/formatters.dart';
 import 'package:flutter_app/screens/reports_screen.dart';
+import 'package:flutter_app/screens/transaction_list_screen.dart';
 
 void main() {
   setUpAll(() async {
@@ -56,6 +57,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const ValueKey('report-categories-tab')));
+    await tester.pumpAndSettle();
+
     expect(find.text('Distribución por categoría'), findsOneWidget);
     expect(find.byKey(const ValueKey('report-expense-tab')), findsOneWidget);
     expect(find.text('Comida'), findsWidgets);
@@ -64,7 +68,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Servicios'), findsOneWidget);
-    expect(find.textContaining('300.000'), findsNWidgets(3));
+    expect(find.textContaining('300.000'), findsOneWidget);
   });
 
   testWidgets('reports compare current month metrics with the prior month', (
@@ -167,6 +171,123 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('report tabs switch between flow, categories and assets', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 850);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: AppState(),
+        child: MaterialApp(
+          theme: ThemeData.dark(useMaterial3: true),
+          home: const Scaffold(body: ReportsScreen()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('report-flow-tab')));
+    await tester.pumpAndSettle();
+    expect(find.text('Ingresos y gastos por fecha'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('report-categories-tab')));
+    await tester.pumpAndSettle();
+    expect(find.text('Distribución por categoría'), findsOneWidget);
+    expect(find.byKey(const ValueKey('report-expense-tab')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('report-assets-tab')));
+    await tester.pumpAndSettle();
+    expect(find.text('Activos, tarjetas y créditos'), findsOneWidget);
+    expect(find.text('Cuentas de activo'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tapping a category opens only its transactions in the period', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 850);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final state = AppState();
+    final now = DateTime.now();
+    state.addTransaction(
+      Transaction(
+        id: 'category-detail-market-1',
+        description: 'Compra mercado uno',
+        amount: 1000,
+        type: TransactionType.expense,
+        date: now,
+        accountId: 'banco',
+        categoryId: 'comida',
+      ),
+    );
+    state.addTransaction(
+      Transaction(
+        id: 'category-detail-market-2',
+        description: 'Compra mercado dos',
+        amount: 2000,
+        type: TransactionType.expense,
+        date: now,
+        accountId: 'banco',
+        categoryId: 'comida',
+      ),
+    );
+    state.addTransaction(
+      Transaction(
+        id: 'category-detail-income',
+        description: 'Reembolso mercado',
+        amount: 500,
+        type: TransactionType.income,
+        date: now,
+        accountId: 'banco',
+        categoryId: 'comida',
+      ),
+    );
+    state.addTransaction(
+      Transaction(
+        id: 'category-detail-other',
+        description: 'Carga bencina',
+        amount: 4000,
+        type: TransactionType.expense,
+        date: now,
+        accountId: 'banco',
+        categoryId: 'transporte',
+      ),
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: state,
+        child: MaterialApp(
+          theme: ThemeData.dark(useMaterial3: true),
+          home: const Scaffold(body: ReportsScreen()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('report-categories-tab')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('report-category-expense-comida')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TransactionListScreen), findsOneWidget);
+    expect(find.text('Comida · Gastos'), findsOneWidget);
+    expect(find.text('Compra mercado uno'), findsOneWidget);
+    expect(find.text('Compra mercado dos'), findsOneWidget);
+    expect(find.text('Reembolso mercado'), findsNothing);
+    expect(find.text('Carga bencina'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }
