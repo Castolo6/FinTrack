@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/formatters.dart';
+import '../services/budget_alerts.dart';
 import '../theme/app_theme.dart';
 
 class BudgetProgress extends StatelessWidget {
@@ -23,8 +24,10 @@ class BudgetProgress extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final ratio = limit > 0 ? (spent / limit).clamp(0.0, 1.0) : 0.0;
-    final exceeded = spent > limit;
-    final nearLimit = !exceeded && ratio >= 0.8;
+    final alertLevel = budgetAlertLevel(spent: spent, limit: limit);
+    final exceeded = alertLevel == BudgetAlertLevel.exceeded;
+    final reachedLimit = alertLevel == BudgetAlertLevel.reachedLimit;
+    final nearLimit = alertLevel == BudgetAlertLevel.nearLimit;
 
     final card = Card(
       child: Padding(
@@ -51,9 +54,15 @@ class BudgetProgress extends StatelessWidget {
                     backgroundColor: colorScheme.errorContainer,
                     foregroundColor: colorScheme.onErrorContainer,
                   )
+                else if (reachedLimit)
+                  _Badge(
+                    text: 'Límite alcanzado',
+                    backgroundColor: colorScheme.errorContainer,
+                    foregroundColor: colorScheme.onErrorContainer,
+                  )
                 else if (nearLimit)
                   _Badge(
-                    text: 'Cerca',
+                    text: 'Cerca del límite',
                     backgroundColor: colorScheme.tertiaryContainer,
                     foregroundColor: colorScheme.onTertiaryContainer,
                   ),
@@ -67,7 +76,7 @@ class BudgetProgress extends StatelessWidget {
                 minHeight: 10,
                 backgroundColor: colorScheme.outline.withValues(alpha: 0.25),
                 valueColor: AlwaysStoppedAnimation<Color>(
-                  exceeded
+                  exceeded || reachedLimit
                       ? AppTheme.error
                       : (nearLimit ? AppTheme.warning : color),
                 ),
@@ -89,6 +98,22 @@ class BudgetProgress extends StatelessWidget {
                 ),
               ],
             ),
+            if (alertLevel != BudgetAlertLevel.none) ...[
+              const SizedBox(height: 6),
+              Text(
+                exceeded
+                    ? 'Superaste el límite por ${Formatters.currency(spent - limit)}'
+                    : reachedLimit
+                    ? 'Límite mensual alcanzado.'
+                    : 'Has usado ${budgetPercent(spent: spent, limit: limit)}% del presupuesto.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: exceeded || reachedLimit
+                      ? colorScheme.error
+                      : colorScheme.tertiary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ],
         ),
       ),
