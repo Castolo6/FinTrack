@@ -1097,14 +1097,11 @@ class _TimelineChart extends StatelessWidget {
                             'es_CL',
                           ).format(bucket.date),
                         };
-                        final seriesLabel = rodIndex == 0
-                            ? 'Ingresos'
-                            : 'Gastos';
                         final color = rodIndex == 0
                             ? scheme.tertiary
                             : scheme.error;
                         return BarTooltipItem(
-                          '$dateLabel\n$seriesLabel: ${Formatters.currency(rod.toY.toInt())}',
+                          '$dateLabel\n${Formatters.currency(rod.toY.toInt())}',
                           theme.textTheme.bodySmall!.copyWith(
                             color: color,
                             fontWeight: FontWeight.w700,
