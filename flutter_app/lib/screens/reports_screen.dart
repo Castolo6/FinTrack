@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/app_models.dart';
 import '../providers/app_state.dart';
@@ -486,7 +487,7 @@ class _ReportsScreenState extends State<ReportsScreen>
           _range.start.month + index,
         ),
       };
-      return _PeriodBucket(date: date, income: 0, expenses: 0);
+      return _PeriodBucket(date: date, income: 0, expenses: 0, mode: mode);
     });
 
     for (final transaction in transactions) {
@@ -622,17 +623,20 @@ class _PeriodBucket {
   final DateTime date;
   final int income;
   final int expenses;
+  final _TimelineMode mode;
 
   const _PeriodBucket({
     required this.date,
     required this.income,
     required this.expenses,
+    required this.mode,
   });
 
   _PeriodBucket copyWith({int? income, int? expenses}) => _PeriodBucket(
     date: date,
     income: income ?? this.income,
     expenses: expenses ?? this.expenses,
+    mode: mode,
   );
 }
 
@@ -1073,6 +1077,43 @@ class _TimelineChart extends StatelessWidget {
                 BarChartData(
                   maxY: maxValue == 0 ? 100 : maxValue * 1.2,
                   barGroups: groups,
+                  barTouchData: BarTouchData(
+                    enabled: true,
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                        final bucketIndex = group.x.toInt();
+                        if (bucketIndex < 0 || bucketIndex >= buckets.length) {
+                          return null;
+                        }
+                        final bucket = buckets[bucketIndex];
+                        final dateLabel = switch (bucket.mode) {
+                          _TimelineMode.day => Formatters.dateShort(
+                            bucket.date,
+                          ),
+                          _TimelineMode.week =>
+                            'Semana desde ${Formatters.dateShort(bucket.date)}',
+                          _TimelineMode.month => DateFormat(
+                            'MMMM',
+                            'es_CL',
+                          ).format(bucket.date),
+                        };
+                        final seriesLabel = rodIndex == 0
+                            ? 'Ingresos'
+                            : 'Gastos';
+                        final color = rodIndex == 0
+                            ? scheme.tertiary
+                            : scheme.error;
+                        return BarTooltipItem(
+                          '$dateLabel\n$seriesLabel: ${Formatters.currency(rod.toY.toInt())}',
+                          theme.textTheme.bodySmall!.copyWith(
+                            color: color,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          textAlign: TextAlign.center,
+                        );
+                      },
+                    ),
+                  ),
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: false,
@@ -1113,7 +1154,8 @@ class _TimelineChart extends StatelessWidget {
                             return const SizedBox.shrink();
                           }
                           final date = buckets[index].date;
-                          final label = buckets.length > 12
+                          final label =
+                              buckets[index].mode == _TimelineMode.month
                               ? '${date.month}/${date.year % 100}'
                               : '${date.day}/${date.month}';
                           return Padding(

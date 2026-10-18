@@ -181,6 +181,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    final now = DateTime.now();
 
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
@@ -196,6 +197,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('report-flow-tab')));
     await tester.pumpAndSettle();
     expect(find.text('Ingresos y gastos por fecha'), findsOneWidget);
+    expect(find.text('1/${now.month}'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('report-categories-tab')));
     await tester.pumpAndSettle();
